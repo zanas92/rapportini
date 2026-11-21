@@ -56,6 +56,11 @@
     <div><span class="label">Ferie</span><strong id="sum-ferie">0 g</strong></div>
     <div><span class="label">Permessi</span><strong id="sum-perm">0 h</strong></div>
     <div id="tile-mal" hidden><span class="label">Malattia</span><strong id="sum-mal">0 g</strong></div>
+    <div class="wide" id="tile-pay" hidden>
+      <span class="label">Straordinari e festivi · stima lorda</span>
+      <strong id="sum-pay">0 €</strong>
+      <span class="label" id="sum-pay-detail"></span>
+    </div>
   </section>
 
   <main>
@@ -76,6 +81,15 @@
       <label class="check"><input type="checkbox" id="set-saturday"> Il sabato è giorno lavorativo</label>
       <label class="field-label" for="set-patron">Santo patrono (gg/mm, facoltativo)</label>
       <input id="set-patron" class="field" inputmode="numeric" placeholder="es. 24/06" maxlength="5">
+      <label class="field-label" for="set-rate">Paga oraria lorda € (dal cedolino, facoltativa)</label>
+      <input id="set-rate" class="field" inputmode="decimal" placeholder="es. 13,50">
+      <details class="pct">
+        <summary>Maggiorazioni % (CCNL Metalmeccanici, non turnisti)</summary>
+        <label class="pct-row">Straordinario prime 2 ore <input id="set-p-str1" class="field" inputmode="decimal"></label>
+        <label class="pct-row">Straordinario ore successive <input id="set-p-str2" class="field" inputmode="decimal"></label>
+        <label class="pct-row">Festivo (festività infrasettimanale) <input id="set-p-fest" class="field" inputmode="decimal"></label>
+        <label class="pct-row">Straordinario festivo (domenica e oltre orario) <input id="set-p-strfest" class="field" inputmode="decimal"></label>
+      </details>
       <h2 class="sheet-sub">Sicurezza</h2>
       <button type="button" class="sheet-btn" id="pin-set">Imposta PIN</button>
       <button type="button" class="sheet-btn danger" id="pin-remove">Rimuovi PIN</button>

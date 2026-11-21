@@ -9,7 +9,28 @@ const MAX_HOURS = 16;
 // - dailyHours: ore ordinarie al giorno; oltre = straordinario feriale
 // - saturdayWorking: false = settimana lun-ven, le ore del sabato sono straordinario
 // - patron: santo patrono "gg/mm" (festivo come le feste nazionali), vuoto se non usato
-const DEFAULT_SETTINGS = { dailyHours: 8, saturdayWorking: false, patron: '' };
+// - hourlyRate: paga oraria lorda in € (0 = non calcolare la stima in euro)
+// - pct: maggiorazioni % (default CCNL Metalmeccanici Industria, non turnisti)
+const DEFAULT_SETTINGS = {
+  dailyHours: 8,
+  saturdayWorking: false,
+  patron: '',
+  hourlyRate: 0,
+  pct: { str1: 25, str2: 30, fest: 50, strFest: 55 },
+};
+const FIRST_OVERTIME_HOURS = 2;  // le prime 2 ore di straordinario hanno la maggiorazione più bassa
+
+// Categorie con maggiorazione, nell'ordine in cui compaiono in riepilogo ed export.
+const PAID_CATS = [
+  { id: 'str1',    label: 'Straord. prime 2 h' },
+  { id: 'str2',    label: 'Straord. ore successive' },
+  { id: 'fest',    label: 'Festivo' },
+  { id: 'strFest', label: 'Straord. festivo' },
+];
+
+function normalizeSettings(s = {}) {
+  return { ...DEFAULT_SETTINGS, ...s, pct: { ...DEFAULT_SETTINGS.pct, ...(s.pct || {}) } };
+}
 
 // Assenze: "fullDay" = giornata intera (vale le ore ordinarie), altrimenti si scelgono le ore.
 const ABSENCE_TYPES = {
@@ -30,11 +51,11 @@ function loadData() {
     if (parsed && typeof parsed.hours === 'object') {
       if (!parsed.notes || typeof parsed.notes !== 'object') parsed.notes = {};
       if (!parsed.absences || typeof parsed.absences !== 'object') parsed.absences = {};
-      parsed.settings = { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) };
+      parsed.settings = normalizeSettings(parsed.settings);
       return parsed;
     }
   } catch (e) { /* dati assenti o corrotti */ }
-  return { version: 1, hours: {}, notes: {}, absences: {}, settings: { ...DEFAULT_SETTINGS } };
+  return { version: 1, hours: {}, notes: {}, absences: {}, settings: normalizeSettings() };
 }
 
 function saveData() {
@@ -117,19 +138,41 @@ function holidayName(key) {
   return '';
 }
 
-// Divide le ore di un giorno in ordinarie / straordinario feriale / festive.
+// Divide le ore di un giorno nelle categorie del CCNL (non turnisti, lavoro diurno):
+// - feriale: ordinarie fino alla soglia, poi straordinario (prime 2 h / successive)
+// - sabato non lavorativo: tutto straordinario feriale
+// - festività infrasettimanale: festivo fino alla soglia, oltre straordinario festivo
+// - domenica: tutto straordinario festivo (fuori dall'orario normale)
 function classify(key, h) {
-  const r = { ord: 0, str: 0, fest: 0 };
+  const r = { ord: 0, str1: 0, str2: 0, fest: 0, strFest: 0, str: 0, festTot: 0 };
   if (!h) return r;
   const wd = parseKey(key).getDay();
-  if (wd === 0 || holidayName(key)) r.fest = h;
-  else if (wd === 6 && !data.settings.saturdayWorking) r.str = h;
-  else {
-    r.ord = Math.min(h, data.settings.dailyHours);
-    r.str = h - r.ord;
+  const thr = data.settings.dailyHours;
+  if (wd === 0) {
+    r.strFest = h;
+  } else if (holidayName(key)) {
+    r.fest = Math.min(h, thr);
+    r.strFest = h - r.fest;
+  } else {
+    r.ord = (wd === 6 && !data.settings.saturdayWorking) ? 0 : Math.min(h, thr);
+    const over = h - r.ord;
+    r.str1 = Math.min(over, FIRST_OVERTIME_HOURS);
+    r.str2 = over - r.str1;
   }
+  r.str = r.str1 + r.str2;
+  r.festTot = r.fest + r.strFest;
   return r;
 }
+
+// Compenso lordo stimato delle ore con maggiorazione: ore × paga oraria × (1 + %).
+function payOf(c) {
+  const rate = data.settings.hourlyRate;
+  if (!rate) return 0;
+  return PAID_CATS.reduce((sum, cat) =>
+    sum + c[cat.id] * rate * (1 + data.settings.pct[cat.id] / 100), 0);
+}
+
+const euro = v => v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 
 function dayTags(key) {
   const hol = holidayName(key);
@@ -141,7 +184,7 @@ function dayTags(key) {
     html += `<span class="tag abs">${t.label.toLowerCase()}` +
             `${t.fullDay ? '' : ' ' + formatHours(abs.hours)}</span>`;
   }
-  if (c.fest) html += `<span class="tag fest">festivo</span>`;
+  if (c.festTot) html += `<span class="tag fest">festivo</span>`;
   else if (c.str) html += `<span class="tag str">+${formatHours(c.str)} str.</span>`;
   return html;
 }
@@ -236,7 +279,8 @@ function monthEntries(y, m) {
 
 function updateSummary() {
   const entries = monthEntries(viewYear, viewMonth);
-  const sum = { tot: 0, ord: 0, str: 0, fest: 0 };
+  const sum = { tot: 0, ord: 0, str: 0, festTot: 0, pay: 0,
+                str1: 0, str2: 0, fest: 0, strFest: 0 };
   const abs = { ferie: 0, permesso: 0, malattia: 0 };
   const prefix = `${viewYear}-${pad(viewMonth + 1)}-`;
   for (const [k, a] of Object.entries(data.absences)) {
@@ -250,14 +294,26 @@ function updateSummary() {
   $('tile-mal').hidden = !abs.malattia;
   for (const [k, v] of entries) {
     const c = classify(k, v);
-    sum.tot += v; sum.ord += c.ord; sum.str += c.str; sum.fest += c.fest;
+    sum.tot += v;
+    for (const f of ['ord', 'str', 'festTot', 'str1', 'str2', 'fest', 'strFest']) sum[f] += c[f];
+    sum.pay += payOf(c);
   }
   const fmt = h => h ? formatHours(h) : '0 h';
   $('total').textContent = fmt(sum.tot);
   $('days-worked').textContent = entries.length === 1 ? '1 giorno' : `${entries.length} giorni`;
   $('sum-ord').textContent = fmt(sum.ord);
   $('sum-str').textContent = fmt(sum.str);
-  $('sum-fest').textContent = fmt(sum.fest);
+  $('sum-fest').textContent = fmt(sum.festTot);
+
+  const showPay = !!data.settings.hourlyRate;
+  $('tile-pay').hidden = !showPay;
+  if (showPay) {
+    $('sum-pay').textContent = euro(sum.pay);
+    $('sum-pay-detail').textContent = PAID_CATS
+      .filter(cat => sum[cat.id])
+      .map(cat => `${cat.label} ${data.settings.pct[cat.id]}%: ${formatHours(sum[cat.id])}`)
+      .join(' · ') || 'Nessuna ora con maggiorazione';
+  }
 }
 
 // ---- Eventi ----
@@ -326,11 +382,17 @@ $('note-save').addEventListener('click', saveDay);
 const dailySel = $('set-daily');
 for (let v = 4; v <= 10; v += 0.5) dailySel.add(new Option(formatHours(v), String(v)));
 
+const PCT_IDS = { str1: 'set-p-str1', str2: 'set-p-str2', fest: 'set-p-fest', strFest: 'set-p-strfest' };
+
 function fillSettings() {
   dailySel.value = String(data.settings.dailyHours);
   $('set-saturday').checked = !!data.settings.saturdayWorking;
   $('set-patron').value = data.settings.patron || '';
+  $('set-rate').value = data.settings.hourlyRate ? decimalIt(data.settings.hourlyRate) : '';
+  for (const [k, id] of Object.entries(PCT_IDS)) $(id).value = data.settings.pct[k];
 }
+
+const parseNum = v => parseFloat(String(v).replace(',', '.'));
 
 function saveSettings() {
   const patron = $('set-patron').value.trim();
@@ -338,15 +400,27 @@ function saveSettings() {
     alert('Scrivi il santo patrono nel formato gg/mm, es. 24/06.');
     return;
   }
+  const rate = $('set-rate').value.trim() ? parseNum($('set-rate').value) : 0;
+  if (!(rate >= 0)) {
+    alert('Paga oraria non valida. Scrivi un numero, es. 13,50.');
+    return;
+  }
+  const pct = {};
+  for (const [k, id] of Object.entries(PCT_IDS)) {
+    const v = parseNum($(id).value);
+    pct[k] = v >= 0 ? v : DEFAULT_SETTINGS.pct[k];
+  }
   data.settings = {
     dailyHours: parseFloat(dailySel.value),
     saturdayWorking: $('set-saturday').checked,
     patron,
+    hourlyRate: Math.round(rate * 10000) / 10000,
+    pct,
   };
   saveData();
   render();
 }
-['set-daily', 'set-saturday', 'set-patron'].forEach(id =>
+['set-daily', 'set-saturday', 'set-patron', 'set-rate', ...Object.values(PCT_IDS)].forEach(id =>
   $(id).addEventListener('change', saveSettings));
 
 $('prev').addEventListener('click', () => {
@@ -419,25 +493,40 @@ const csvCell = s => /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 
 function buildCsv(keys) {
   // Separatore ";" e virgola decimale: si apre correttamente in Excel italiano.
-  const rows = ['Data;Giorno;Festività;Ore;Ordinarie;Straordinario;Festive;' +
-                'Assenza;Ore assenza;Descrizione'];
-  const tot = { h: 0, ord: 0, str: 0, fest: 0 };
+  const pct = data.settings.pct;
+  const withPay = !!data.settings.hourlyRate;
+  const head = ['Data', 'Giorno', 'Festività', 'Ore', 'Ordinarie',
+    ...PAID_CATS.map(cat => `${cat.label} ${pct[cat.id]}%`),
+    ...(withPay ? ['Compenso stimato €'] : []),
+    'Assenza', 'Ore assenza', 'Descrizione'];
+  const rows = [head.join(';')];
+  const tot = { h: 0, ord: 0, pay: 0, str1: 0, str2: 0, fest: 0, strFest: 0 };
   const num = v => v ? decimalIt(v) : '';
+  const money = v => v.toFixed(2).replace('.', ',');
   for (const k of keys) {
     const date = parseKey(k);
     const h = data.hours[k] || 0;
     const c = classify(k, h);
-    const note = csvCell(data.notes[k] || '');
+    const pay = payOf(c);
     const a = data.absences[k];
-    const absCols = a ? `${ABSENCE_TYPES[a.type].label};${decimalIt(a.hours)}` : ';';
-    rows.push(`${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()};` +
-              `${weekdayLong.format(date)};${holidayName(k)};` +
-              `${num(h)};${num(c.ord)};${num(c.str)};${num(c.fest)};${absCols};${note}`);
-    tot.h += h; tot.ord += c.ord; tot.str += c.str; tot.fest += c.fest;
+    rows.push([
+      `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`,
+      weekdayLong.format(date), holidayName(k), num(h), num(c.ord),
+      ...PAID_CATS.map(cat => num(c[cat.id])),
+      ...(withPay ? [pay ? money(pay) : ''] : []),
+      a ? ABSENCE_TYPES[a.type].label : '', a ? decimalIt(a.hours) : '',
+      csvCell(data.notes[k] || ''),
+    ].join(';'));
+    tot.h += h; tot.ord += c.ord; tot.pay += pay;
+    for (const cat of PAID_CATS) tot[cat.id] += c[cat.id];
   }
-  rows.push(`Totale;;;${decimalIt(tot.h)};${decimalIt(tot.ord)};` +
-            `${decimalIt(tot.str)};${decimalIt(tot.fest)};;;`);
-  return '﻿' + rows.join('\r\n') + '\r\n';
+  rows.push([
+    'Totale', '', '', decimalIt(tot.h), decimalIt(tot.ord),
+    ...PAID_CATS.map(cat => decimalIt(tot[cat.id])),
+    ...(withPay ? [money(tot.pay)] : []),
+    '', '', '',
+  ].join(';'));
+  return '\uFEFF' + rows.join('\r\n') + '\r\n';
 }
 
 $('export-month').addEventListener('click', () => {
@@ -492,7 +581,7 @@ $('restore-file').addEventListener('change', async e => {
     Object.assign(data.hours, inHours);
     Object.assign(data.notes, inNotes);
     Object.assign(data.absences, inAbs);
-    if (parsed.settings) data.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
+    if (parsed.settings) data.settings = normalizeSettings(parsed.settings);
     saveData();
     menu.close();
     render();
@@ -636,7 +725,7 @@ $('lock-forgot').addEventListener('click', () => {
   if (!confirm('Sei sicuro? Tutte le ore e le descrizioni verranno eliminate.')) return;
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(PIN_KEY);
-  data = { version: 1, hours: {}, notes: {}, absences: {}, settings: { ...DEFAULT_SETTINGS } };
+  data = { version: 1, hours: {}, notes: {}, absences: {}, settings: normalizeSettings() };
   hideLock();
   render();
 });
