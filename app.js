@@ -161,8 +161,12 @@ function dayTags(key) {
     html += `<span class="tag abs">${t.label.toLowerCase()}` +
             `${t.fullDay ? '' : ' ' + formatHours(abs.hours)}</span>`;
   }
-  if (c.festTot) html += `<span class="tag fest">festivo</span>`;
-  else if (c.str) html += `<span class="tag str">+${formatHours(c.str)} str.</span>`;
+  // Una etichetta per ogni voce di straordinario del giorno, es. "+2 h 25%" "+1 h 30%".
+  for (const cat of OT_CATS) {
+    if (!c[cat.id]) continue;
+    const cls = cat.id === 'fest' || cat.id === 'strFest' ? 'fest' : 'str';
+    html += `<span class="tag ${cls}">+${formatHours(c[cat.id])} ${cat.label.match(/\d+%/)[0]}</span>`;
+  }
   return html;
 }
 

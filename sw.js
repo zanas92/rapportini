@@ -1,6 +1,6 @@
 // Service worker: salva l'app in cache per farla funzionare senza connessione.
 // Quando modifichi i file, incrementa la versione per aggiornare la cache.
-const CACHE = 'rapportini-v8';
+const CACHE = 'rapportini-v9';
 const FILES = [
   './',
   'index.html',
