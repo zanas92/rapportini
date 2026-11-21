@@ -2,7 +2,7 @@
 
 // ---- Impostazioni ----
 const STORAGE_KEY = 'rapportini.v1';
-const STEP = 0.25;  // passo del selettore (0.25 = quarto d'ora, 0.5 = mezz'ora)
+const STEP = 0.5;   // passo del selettore (0.5 = mezz'ora, 0.25 = quarto d'ora)
 const MAX_HOURS = 16;
 
 // ---- Dati ----
@@ -112,6 +112,10 @@ function render() {
               aria-label="Ore del ${d} ${monthYear.format(date)}">${OPTIONS_HTML}</select>`;
 
     const sel = li.querySelector('select');
+    // Valori salvati con un passo diverso (es. 8 h 15): li mostra comunque.
+    if (h && !sel.querySelector(`option[value="${h}"]`)) {
+      sel.add(new Option(formatHours(h), String(h)), 1);
+    }
     sel.value = h ? String(h) : '';
     sel.classList.toggle('filled', !!h);
     frag.appendChild(li);
