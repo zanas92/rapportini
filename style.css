@@ -410,22 +410,3 @@ dialog { max-height: calc(100% - 24px); overflow-y: auto; }
 }
 .check input { width: 20px; height: 20px; accent-color: var(--accent); }
 
-/* Maggiorazioni */
-.pct summary {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  color: var(--accent);
-  cursor: pointer;
-}
-.pct-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: 14px;
-}
-.pct-row .field { width: 76px; text-align: center; }
-#sum-pay-detail { margin-top: 2px; }
