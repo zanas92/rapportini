@@ -136,21 +136,30 @@ main {
   flex: 1;
   min-width: 0;
   padding: 6px 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
 }
 .date .line {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
-.note-icon {
-  font-size: 13px;
+.desc-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
   color: var(--muted);
-  opacity: .45;
+  cursor: pointer;
 }
+.desc-btn.has {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+.desc-btn:active { background: var(--accent-soft); }
 .note {
   max-width: 100%;
   padding-left: calc(2ch + 8px);

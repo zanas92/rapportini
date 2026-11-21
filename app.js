@@ -99,14 +99,19 @@ function render() {
     if (key === todayKey) li.classList.add('today');
 
     li.innerHTML = `
-      <button type="button" class="date" data-key="${key}"
-              aria-label="Nota del ${d} ${monthYear.format(date)}">
+      <div class="date">
         <span class="line">
           <span class="num">${d}</span>
           <span class="wd">${weekdayShort.format(date).replace('.', '')}</span>
-          <span class="note-icon" aria-hidden="true">✎</span>
         </span>
         ${note ? `<span class="note">${escapeHtml(note)}</span>` : ''}
+      </div>
+      <button type="button" class="desc-btn${note ? ' has' : ''}" data-key="${key}"
+              aria-label="Descrizione del ${d} ${monthYear.format(date)}">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
       </button>
       <select class="hours" data-key="${key}"
               aria-label="Ore del ${d} ${monthYear.format(date)}">${OPTIONS_HTML}</select>`;
@@ -161,7 +166,7 @@ const noteText = $('note-text');
 let noteKey = null;
 
 daysEl.addEventListener('click', e => {
-  const btn = e.target.closest('button.date');
+  const btn = e.target.closest('button.desc-btn');
   if (!btn) return;
   noteKey = btn.dataset.key;
   const t = weekdayLong.format(parseKey(noteKey)) + ' ' +
@@ -241,7 +246,7 @@ async function deliverFile(filename, content, mime) {
   return true;
 }
 
-// Giorni con ore o nota, in ordine; prefix opzionale per filtrare un mese.
+// Giorni con ore o descrizione, in ordine; prefix opzionale per filtrare un mese.
 function exportKeys(prefix = '') {
   const keys = new Set([
     ...Object.keys(data.hours).filter(k => data.hours[k] > 0),
@@ -254,7 +259,7 @@ const csvCell = s => /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 
 function buildCsv(keys) {
   // Separatore ";" e virgola decimale: si apre correttamente in Excel italiano.
-  const rows = ['Data;Giorno;Ore;Note'];
+  const rows = ['Data;Giorno;Ore;Descrizione'];
   let total = 0;
   for (const k of keys) {
     const date = parseKey(k);
@@ -454,7 +459,7 @@ $('lock-cancel').addEventListener('click', hideLock);
 $('lock-forgot').addEventListener('click', () => {
   if (!confirm('Senza PIN l\'unico modo per entrare è CANCELLARE TUTTI I DATI salvati su ' +
                'questo dispositivo. Potrai poi ripristinarli da un backup. Continuare?')) return;
-  if (!confirm('Sei sicuro? Tutte le ore e le note verranno eliminate.')) return;
+  if (!confirm('Sei sicuro? Tutte le ore e le descrizioni verranno eliminate.')) return;
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(PIN_KEY);
   data = { version: 1, hours: {}, notes: {} };
