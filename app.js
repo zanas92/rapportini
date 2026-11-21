@@ -20,6 +20,13 @@ const OT_CATS = [
   { id: 'strFest', label: 'Straordinario festivo 55%',  short: 'Str. festivo 55%' },
 ];
 
+// Assenze: "fullDay" = giornata intera (vale le ore ordinarie), altrimenti si scelgono le ore.
+const ABSENCE_TYPES = {
+  ferie:    { label: 'Ferie',    fullDay: true },
+  permesso: { label: 'Permesso', fullDay: false },
+  malattia: { label: 'Malattia', fullDay: true },
+};
+
 function normalizeSettings(s = {}) {
   const out = {};
   for (const k of Object.keys(DEFAULT_SETTINGS)) out[k] = k in s ? s[k] : DEFAULT_SETTINGS[k];
