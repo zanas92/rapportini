@@ -48,6 +48,15 @@
     <button class="icon-btn menu-btn" id="menu-btn" aria-label="Esporta e backup">&#8943;</button>
   </header>
 
+  <div class="banner" id="backup-banner" role="status" hidden>
+    <p id="banner-text"></p>
+    <div class="banner-actions">
+      <button type="button" class="banner-btn primary" id="banner-backup">Salva backup</button>
+      <button type="button" class="banner-btn" id="banner-pdf">PDF</button>
+      <button type="button" class="banner-btn ghost" id="banner-later">Più tardi</button>
+    </div>
+  </div>
+
   <section class="summary" aria-live="polite">
     <div class="wide"><span class="label">Totale lavorate · <span id="days-worked">0 giorni</span></span><strong id="total">0 h</strong></div>
     <div><span class="label">Ordinarie</span><strong id="sum-ord">0 h</strong></div>

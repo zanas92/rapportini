@@ -430,3 +430,35 @@ dialog { max-height: calc(100% - 24px); overflow-y: auto; }
   transition: opacity .2s, transform .2s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* Promemoria backup */
+.banner {
+  max-width: 616px;
+  margin: 12px auto 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff4d6;
+  color: #5c3d00;
+}
+.banner[hidden] { display: none; }
+.banner p { margin: 0 0 10px; font-size: 14px; line-height: 1.35; }
+.banner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.banner-btn {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 19px;
+  background: rgba(92, 61, 0, .1);
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.banner-btn.primary { background: #9a5b00; color: #fff; }
+.banner-btn.ghost { background: transparent; font-weight: 500; }
+@media (max-width: 640px) { .banner { margin: 12px 12px 0; } }
+@media (prefers-color-scheme: dark) {
+  .banner { background: #3a2b10; color: #f5d48a; }
+  .banner-btn { background: rgba(245, 212, 138, .12); }
+  .banner-btn.primary { background: #f5b94a; color: #2a1d00; }
+}

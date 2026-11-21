@@ -302,6 +302,7 @@ daysEl.addEventListener('change', e => {
   sel.closest('.day').querySelector('.tags').innerHTML = dayTags(key);
   saveData();
   updateSummary();
+  updateBackupBanner();
 });
 
 // ---- Note ----
@@ -406,6 +407,7 @@ function updateLastBackup() {
 
 $('menu-btn').addEventListener('click', () => {
   updateLastBackup();
+  loadPdfLib().catch(() => {});
   fillSettings();
   menu.showModal();
 });
@@ -610,22 +612,22 @@ function buildPdf(y, m) {
   return doc.output('arraybuffer');
 }
 
-$('export-pdf').addEventListener('click', async () => {
-  const btn = $('export-pdf');
-  const label = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Preparo il PDF…';
+async function exportPdf(y, m, btn) {
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparo il PDF…'; }
   try {
     await loadPdfLib();
-    const pdf = buildPdf(viewYear, viewMonth);
-    await deliverFile(`rapportino-${viewYear}-${pad(viewMonth + 1)}.pdf`, pdf, 'application/pdf');
+    const pdf = buildPdf(y, m);
+    return await deliverFile(`rapportino-${y}-${pad(m + 1)}.pdf`, pdf, 'application/pdf');
   } catch (e) {
     alert('Impossibile creare il PDF: ' + e.message);
+    return false;
   } finally {
-    btn.disabled = false;
-    btn.textContent = label;
+    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
-});
+}
+
+$('export-pdf').addEventListener('click', e => exportPdf(viewYear, viewMonth, e.currentTarget));
 
 $('export-month').addEventListener('click', () => {
   const keys = exportKeys(`${viewYear}-${pad(viewMonth + 1)}-`);
@@ -639,7 +641,7 @@ $('export-all').addEventListener('click', () => {
   deliverFile('ore-tutte.csv', buildCsv(keys), 'text/csv');
 });
 
-$('backup').addEventListener('click', async () => {
+async function doBackup() {
   const t = new Date();
   const name = `rapportini-backup-${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}.json`;
   const payload = JSON.stringify(
@@ -649,7 +651,54 @@ $('backup').addEventListener('click', async () => {
     data.lastBackup = t.toISOString();
     saveData();
     updateLastBackup();
+    updateBackupBanner();
   }
+}
+
+$('backup').addEventListener('click', doBackup);
+
+// ---- Promemoria backup ----
+// Compare se ci sono dati e non è mai stato fatto un backup, oppure dal 1° di ogni mese
+// finché non si fa il backup del mese. "Più tardi" lo nasconde per 3 giorni.
+const SNOOZE_DAYS = 3;
+
+function hasAnyData() {
+  return Object.keys(data.hours).length || Object.keys(data.notes).length ||
+         Object.keys(data.absences).length;
+}
+
+function backupDue() {
+  if (!hasAnyData()) return null;
+  const now = new Date();
+  if (data.backupSnoozeUntil && now < new Date(data.backupSnoozeUntil)) return null;
+  if (!data.lastBackup) return 'never';
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  return new Date(data.lastBackup) < monthStart ? 'monthly' : null;
+}
+
+function updateBackupBanner() {
+  const due = backupDue();
+  $('backup-banner').hidden = !due;
+  if (!due) return;
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  $('banner-pdf').textContent = 'PDF di ' + monthYear.format(prev).split(' ')[0];
+  $('banner-text').textContent = due === 'never'
+    ? 'Non hai ancora salvato un backup. Salvalo su iCloud Drive o Google Drive per non perdere le ore.'
+    : `È iniziato un nuovo mese: salva il backup e il rapportino PDF di ${monthYear.format(prev)}.`;
+  loadPdfLib().catch(() => {});  // pronto in anticipo, così il salvataggio parte subito
+}
+
+$('banner-backup').addEventListener('click', doBackup);
+$('banner-pdf').addEventListener('click', e => {
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  exportPdf(prev.getFullYear(), prev.getMonth(), e.currentTarget);
+});
+$('banner-later').addEventListener('click', () => {
+  data.backupSnoozeUntil = new Date(Date.now() + SNOOZE_DAYS * 86400000).toISOString();
+  saveData();
+  updateBackupBanner();
 });
 
 $('restore').addEventListener('click', () => $('restore-file').click());
@@ -847,13 +896,17 @@ let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     hiddenAt = Date.now();
-  } else if (getPin() && !pinMode && Date.now() - hiddenAt > LOCK_AFTER_MS) {
+    return;
+  }
+  updateBackupBanner();
+  if (getPin() && !pinMode && Date.now() - hiddenAt > LOCK_AFTER_MS) {
     showLock('unlock');
   }
 });
 
 // ---- Avvio ----
 render();
+updateBackupBanner();
 if (getPin()) showLock('unlock');
 
 if ('serviceWorker' in navigator) {
