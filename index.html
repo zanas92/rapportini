@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Rapportini</title>
+  <meta name="theme-color" content="#1f5fbf">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Rapportini">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="prev" aria-label="Mese precedente">&#8249;</button>
+    <button class="month-title" id="month-title" aria-label="Torna al mese corrente"></button>
+    <button class="icon-btn" id="next" aria-label="Mese successivo">&#8250;</button>
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Esporta e backup">&#8943;</button>
+  </header>
+
+  <section class="summary" aria-live="polite">
+    <div><span class="label">Totale mese</span><strong id="total">0 h</strong></div>
+    <div><span class="label">Giorni lavorati</span><strong id="days-worked">0</strong></div>
+  </section>
+
+  <main>
+    <ul class="days" id="days"></ul>
+  </main>
+
+  <dialog id="menu">
+    <form method="dialog" class="sheet">
+      <h2>Esporta e backup</h2>
+      <button type="button" class="sheet-btn" id="export-month">Esporta mese (CSV / Excel)</button>
+      <button type="button" class="sheet-btn" id="export-all">Esporta tutto (CSV / Excel)</button>
+      <button type="button" class="sheet-btn" id="backup">Salva backup completo (JSON)</button>
+      <button type="button" class="sheet-btn" id="restore">Ripristina da backup&hellip;</button>
+      <p class="hint" id="last-backup"></p>
+      <button class="sheet-btn close">Chiudi</button>
+    </form>
+  </dialog>
+
+  <dialog id="note-dialog">
+    <form method="dialog" class="sheet">
+      <h2 id="note-title"></h2>
+      <textarea id="note-text" rows="4" maxlength="500"
+                placeholder="Cliente, cantiere, attività…"></textarea>
+      <button type="button" class="sheet-btn" id="note-save">Salva nota</button>
+      <button type="button" class="sheet-btn danger" id="note-delete">Elimina nota</button>
+      <button class="sheet-btn close">Annulla</button>
+    </form>
+  </dialog>
+
+  <input type="file" id="restore-file" accept=".json,application/json" hidden>
+
+  <script src="app.js"></script>
+</body>
+</html>
