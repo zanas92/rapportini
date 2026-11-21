@@ -493,6 +493,140 @@ function buildCsv(keys) {
   return '\uFEFF' + rows.join('\r\n') + '\r\n';
 }
 
+// ---- PDF del mese ----
+// La libreria jsPDF si carica solo quando serve (ed è in cache per l'uso offline).
+let pdfLibPromise = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error('impossibile caricare ' + src));
+    document.head.appendChild(el);
+  });
+}
+function loadPdfLib() {
+  if (!pdfLibPromise) {
+    pdfLibPromise = loadScript('vendor/jspdf.umd.min.js')
+      .then(() => loadScript('vendor/jspdf.plugin.autotable.min.js'))
+      .catch(e => { pdfLibPromise = null; throw e; });
+  }
+  return pdfLibPromise;
+}
+
+const capitalize = t => t.charAt(0).toUpperCase() + t.slice(1);
+
+function buildPdf(y, m) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const title = capitalize(monthYear.format(new Date(y, m, 1)));
+  const hh = v => v ? formatHours(v) : '';
+
+  doc.setFontSize(16);
+  doc.text(`Rapportino ore - ${title}`, 10, 15);
+  doc.setFontSize(9);
+  doc.setTextColor(110);
+  doc.text(`Generato il ${new Date().toLocaleDateString('it-IT')}`, 10, 21);
+  doc.setTextColor(0);
+
+  const body = [], shaded = [];
+  const tot = { h: 0, ord: 0, str1: 0, str2: 0, fest: 0, strFest: 0 };
+  const abs = { ferie: 0, permesso: 0, malattia: 0 };
+  const days = new Date(y, m + 1, 0).getDate();
+  for (let d = 1; d <= days; d++) {
+    const key = dateKey(y, m, d);
+    const date = new Date(y, m, d);
+    const wd = date.getDay();
+    const h = data.hours[key] || 0;
+    const c = classify(key, h);
+    const a = data.absences[key];
+    const hol = holidayName(key);
+    let absText = '';
+    if (a) {
+      const t = ABSENCE_TYPES[a.type];
+      absText = t.label + (t.fullDay ? '' : ' ' + formatHours(a.hours));
+      abs[a.type] += t.fullDay ? 1 : a.hours;
+    }
+    body.push([
+      `${pad(d)}/${pad(m + 1)}`,
+      weekdayShort.format(date).replace('.', '') + (hol ? `\n${hol}` : ''),
+      hh(h), hh(c.ord), ...OT_CATS.map(cat => hh(c[cat.id])),
+      absText, data.notes[key] || '',
+    ]);
+    shaded.push(wd === 0 || wd === 6 || !!hol);
+    tot.h += h; tot.ord += c.ord;
+    for (const cat of OT_CATS) tot[cat.id] += c[cat.id];
+  }
+
+  doc.autoTable({
+    startY: 25,
+    margin: { left: 10, right: 10 },
+    theme: 'grid',
+    head: [['Data', 'Giorno', 'Ore', 'Ordin.', 'Str. 25%', 'Str. 30%', 'Fest. 50%',
+            'Str. fest. 55%', 'Assenza', 'Descrizione']],
+    body,
+    foot: [['Totale', '', hh(tot.h) || '0 h', hh(tot.ord), ...OT_CATS.map(cat => hh(tot[cat.id])), '', '']],
+    styles: { fontSize: 7.5, cellPadding: 1.1, valign: 'middle', lineColor: [210, 214, 220] },
+    headStyles: { fillColor: [31, 95, 191], textColor: 255, fontSize: 7.5 },
+    footStyles: { fillColor: [227, 236, 250], textColor: 20, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 11 }, 1: { cellWidth: 19 },
+      2: { cellWidth: 13, halign: 'right' }, 3: { cellWidth: 13, halign: 'right' },
+      4: { cellWidth: 13, halign: 'right' }, 5: { cellWidth: 13, halign: 'right' },
+      6: { cellWidth: 13, halign: 'right' }, 7: { cellWidth: 15, halign: 'right' },
+      8: { cellWidth: 19 }, 9: { cellWidth: 'auto' },
+    },
+    didParseCell: cell => {
+      if (cell.section === 'body' && shaded[cell.row.index]) cell.cell.styles.fillColor = [240, 241, 244];
+      if (cell.section === 'foot' && cell.column.index >= 2 && cell.column.index <= 7) {
+        cell.cell.styles.halign = 'right';
+      }
+    },
+  });
+
+  // Riepilogo e firma
+  let yy = doc.lastAutoTable.finalY + 8;
+  if (yy > 255) { doc.addPage(); yy = 20; }
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'bold');
+  doc.text('Riepilogo', 10, yy);
+  doc.setFont(undefined, 'normal');
+  const giorni = n => n === 1 ? '1 giorno' : `${n} giorni`;
+  const lines = [
+    ['Ore lavorate', hh(tot.h) || '0 h'],
+    ['Ordinarie', hh(tot.ord) || '0 h'],
+    ...OT_CATS.map(cat => [cat.label, hh(tot[cat.id]) || '0 h']),
+    ['Ferie', giorni(abs.ferie)],
+    ['Permessi', hh(abs.permesso) || '0 h'],
+    ['Malattia', giorni(abs.malattia)],
+  ];
+  lines.forEach(([k, v], i) => {
+    doc.text(k, 10, yy + 6 + i * 5);
+    doc.text(v, 75, yy + 6 + i * 5, { align: 'right' });
+  });
+  const sy = yy + 6 + lines.length * 5 + 10;
+  doc.text('Firma', 120, sy - 12);
+  doc.line(120, sy, 200, sy);
+  return doc.output('arraybuffer');
+}
+
+$('export-pdf').addEventListener('click', async () => {
+  const btn = $('export-pdf');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Preparo il PDF…';
+  try {
+    await loadPdfLib();
+    const pdf = buildPdf(viewYear, viewMonth);
+    await deliverFile(`rapportino-${viewYear}-${pad(viewMonth + 1)}.pdf`, pdf, 'application/pdf');
+  } catch (e) {
+    alert('Impossibile creare il PDF: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+});
+
 $('export-month').addEventListener('click', () => {
   const keys = exportKeys(`${viewYear}-${pad(viewMonth + 1)}-`);
   if (!keys.length) return alert('Nessun dato inserito in questo mese.');
