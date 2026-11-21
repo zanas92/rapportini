@@ -410,11 +410,35 @@ $('menu-btn').addEventListener('click', () => {
   menu.showModal();
 });
 
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+// iPhone e iPad (anche iPadOS che si presenta come Mac, ma con schermo touch).
+const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+function downloadFile(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// iPhone: pannello di condivisione ("Salva su File", iCloud Drive, Mail...).
+// Android e PC: scarica direttamente nella cartella Download.
 async function deliverFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
-  // Su telefono usa il pannello di condivisione (Salva su File, Mail, WhatsApp...).
-  const isTouch = window.matchMedia('(pointer: coarse)').matches;
-  if (isTouch && navigator.canShare) {
+  if (IS_IOS && navigator.canShare) {
     const file = new File([blob], filename, { type: mime });
     if (navigator.canShare({ files: [file] })) {
       try {
@@ -425,14 +449,8 @@ async function deliverFile(filename, content, mime) {
       }
     }
   }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  downloadFile(blob, filename);
+  toast(IS_ANDROID || !IS_IOS ? `Salvato in Download: ${filename}` : `File pronto: ${filename}`);
   return true;
 }
 

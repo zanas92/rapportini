@@ -18,6 +18,10 @@ poi apri http://localhost:8000
 Menu ⋯ → *Salva backup completo (JSON)*; si ripristina con *Ripristina da backup*.
 L'export CSV si apre direttamente in Excel.
 
+Dove finiscono i file:
+- **iPhone/iPad**: si apre il pannello di condivisione → *Salva su File* (iCloud Drive o Sul mio iPhone).
+- **Android e PC**: il file viene scaricato direttamente nella cartella **Download**.
+
 ## Aggiornare l'app
 Dopo aver modificato i file, incrementa `CACHE` in `sw.js` (es. `rapportini-v2`),
 altrimenti i dispositivi continuano a usare la versione in cache.
