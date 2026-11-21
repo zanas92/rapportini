@@ -319,8 +319,172 @@ $('restore-file').addEventListener('change', async e => {
   }
 });
 
+// ---- PIN ----
+// Il PIN non è salvato in chiaro: si conserva solo l'impronta SHA-256 (con salt).
+const PIN_KEY = 'rapportini.pin';
+const PIN_LEN = 4;
+const LOCK_AFTER_MS = 60 * 1000;  // richiede il PIN se l'app resta in background oltre 1 minuto
+const MAX_ATTEMPTS = 5;
+const BLOCK_MS = 30 * 1000;
+
+let pinMode = null;      // 'unlock' | 'set' | 'confirm'
+let pinBuffer = '';
+let pinFirst = '';
+let failCount = 0;
+let blockedUntil = 0;
+
+function getPin() {
+  try { return JSON.parse(localStorage.getItem(PIN_KEY)); } catch (e) { return null; }
+}
+
+async function hashPin(pin, salt) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function lockMessage(text, isError = false) {
+  const el = $('lock-msg');
+  el.textContent = text;
+  el.classList.toggle('error', isError);
+}
+
+function updateDots() {
+  $('pin-dots').querySelectorAll('span')
+    .forEach((s, i) => s.classList.toggle('on', i < pinBuffer.length));
+}
+
+function showLock(mode, message) {
+  pinMode = mode;
+  pinBuffer = '';
+  if (mode === 'set') pinFirst = '';
+  if (menu.open) menu.close();
+  if (noteDialog.open) noteDialog.close();
+  const defaults = {
+    unlock: 'Inserisci il PIN',
+    set: `Scegli un PIN di ${PIN_LEN} cifre`,
+    confirm: 'Ripeti il PIN',
+  };
+  lockMessage(message || defaults[mode], !!message && mode !== 'confirm');
+  $('lock-cancel').hidden = mode === 'unlock';
+  $('lock-forgot').hidden = mode !== 'unlock';
+  updateDots();
+  document.documentElement.classList.add('locked');
+}
+
+function hideLock() {
+  pinMode = null;
+  pinBuffer = '';
+  document.documentElement.classList.remove('locked');
+}
+
+function pinError(text) {
+  pinBuffer = '';
+  updateDots();
+  lockMessage(text, true);
+  const dots = $('pin-dots');
+  dots.classList.remove('shake');
+  void dots.offsetWidth;  // riavvia l'animazione
+  dots.classList.add('shake');
+}
+
+async function checkPin() {
+  const entered = pinBuffer;
+  if (pinMode === 'unlock') {
+    const stored = getPin();
+    if (!stored || await hashPin(entered, stored.salt) === stored.hash) {
+      failCount = 0;
+      hideLock();
+      return;
+    }
+    if (++failCount >= MAX_ATTEMPTS) {
+      failCount = 0;
+      blockedUntil = Date.now() + BLOCK_MS;
+      pinError(`Troppi tentativi. Riprova tra ${BLOCK_MS / 1000} secondi.`);
+    } else {
+      pinError('PIN errato');
+    }
+  } else if (pinMode === 'set') {
+    pinFirst = entered;
+    showLock('confirm');
+  } else if (pinMode === 'confirm') {
+    if (entered !== pinFirst) {
+      showLock('set', 'I PIN non coincidono, riprova.');
+      return;
+    }
+    const salt = [...crypto.getRandomValues(new Uint8Array(16))]
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(PIN_KEY, JSON.stringify({ salt, hash: await hashPin(entered, salt) }));
+    hideLock();
+    alert('PIN impostato. Verrà chiesto a ogni apertura dell\'app.');
+  }
+}
+
+function pressDigit(d) {
+  if (!pinMode || pinBuffer.length >= PIN_LEN) return;
+  if (Date.now() < blockedUntil) return;
+  pinBuffer += d;
+  updateDots();
+  if (pinBuffer.length === PIN_LEN) setTimeout(checkPin, 120);
+}
+
+function pressDelete() {
+  pinBuffer = pinBuffer.slice(0, -1);
+  updateDots();
+}
+
+$('keypad').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  if (btn.dataset.digit) pressDigit(btn.dataset.digit);
+  else if (btn.id === 'pin-del') pressDelete();
+});
+
+document.addEventListener('keydown', e => {
+  if (!pinMode) return;
+  if (/^[0-9]$/.test(e.key)) pressDigit(e.key);
+  else if (e.key === 'Backspace') pressDelete();
+});
+
+$('lock-cancel').addEventListener('click', hideLock);
+
+$('lock-forgot').addEventListener('click', () => {
+  if (!confirm('Senza PIN l\'unico modo per entrare è CANCELLARE TUTTI I DATI salvati su ' +
+               'questo dispositivo. Potrai poi ripristinarli da un backup. Continuare?')) return;
+  if (!confirm('Sei sicuro? Tutte le ore e le note verranno eliminate.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(PIN_KEY);
+  data = { version: 1, hours: {}, notes: {} };
+  hideLock();
+  render();
+});
+
+function updatePinButtons() {
+  const has = !!getPin();
+  $('pin-set').textContent = has ? 'Cambia PIN' : 'Imposta PIN';
+  $('pin-remove').hidden = !has;
+}
+
+$('menu-btn').addEventListener('click', updatePinButtons);
+$('pin-set').addEventListener('click', () => showLock('set'));
+$('pin-remove').addEventListener('click', () => {
+  if (!confirm('Rimuovere il PIN? L\'app si aprirà senza protezione.')) return;
+  localStorage.removeItem(PIN_KEY);
+  updatePinButtons();
+});
+
+// Richiede di nuovo il PIN quando si torna all'app dopo un po'.
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    hiddenAt = Date.now();
+  } else if (getPin() && !pinMode && Date.now() - hiddenAt > LOCK_AFTER_MS) {
+    showLock('unlock');
+  }
+});
+
 // ---- Avvio ----
 render();
+if (getPin()) showLock('unlock');
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
