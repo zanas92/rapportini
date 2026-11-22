@@ -695,3 +695,10 @@ body > .topbar {
   .topbar { grid-template-columns: 38px minmax(0, 1fr) 38px; }
   body > .topbar { grid-template-columns: 38px minmax(0, 1fr) 38px 38px; }
 }
+
+/* Pulsante "Svuota mese": rosso, ma pieno come gli altri */
+.sheet-btn.danger-soft { background: #fde2e2; color: #b42318; }
+.sheet-btn:disabled { opacity: .45; cursor: default; }
+@media (prefers-color-scheme: dark) {
+  .sheet-btn.danger-soft { background: #3d1a1a; color: #f08a80; }
+}

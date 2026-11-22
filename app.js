@@ -2,7 +2,7 @@
 
 // Versione dell'app, mostrata in fondo al menu ☰.
 // Va tenuta uguale al numero di CACHE in sw.js: si aumentano insieme a ogni modifica.
-const APP_VERSION = 23;
+const APP_VERSION = 25;
 
 // ---- Impostazioni ----
 const STORAGE_KEY = 'rapportini.v1';
@@ -97,9 +97,6 @@ function formatHours(h) {
 }
 
 const decimalIt = h => String(h).replace('.', ',');
-
-const escapeHtml = s => s.replace(/[&<>"']/g, c =>
-  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const parseKey = k => {
   const [y, m, d] = k.split('-').map(Number);
@@ -279,13 +276,12 @@ function render({ scroll = 'keep', dir = 0 } = {}) {
           <span class="wd">${weekdayShort.format(date).replace('.', '')}</span>
           <span class="tags">${dayTags(key)}</span>
         </span>
-        ${note ? `<span class="note">${escapeHtml(note)}</span>` : ''}
       </div>
       <button type="button" class="desc-btn${note ? ' has' : ''}" data-key="${key}"
-              aria-label="Descrizione del ${d} ${monthYear.format(date)}">
+              aria-label="${note ? 'Nota' : 'Aggiungi nota'} del ${d} ${monthYear.format(date)}">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor"
-                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 3h9l4 4v14H6z M14 3v5h5 M9 12h7 M9 16h7" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
       <select class="hours" data-key="${key}"
@@ -427,7 +423,46 @@ function fillSettings() {
   $('set-saturday').checked = !!data.settings.saturdayWorking;
   $('set-patron').value = data.settings.patron || '';
   $('rates-summary').textContent = OT_CATS.map(c => rate(c) + '%').join(' · ');
+  updateClearMonth();
 }
+
+// ---- Svuota mese (dal mese visualizzato) ----
+function monthKeysWithData(y, m) {
+  const prefix = `${y}-${pad(m + 1)}-`;
+  const keys = new Set();
+  for (const store of [data.hours, data.notes, data.absences]) {
+    for (const k of Object.keys(store)) if (k.startsWith(prefix)) keys.add(k);
+  }
+  return [...keys];
+}
+function updateClearMonth() {
+  const name = monthYear.format(new Date(viewYear, viewMonth, 1));
+  const n = monthKeysWithData(viewYear, viewMonth).length;
+  const btn = $('clear-month');
+  btn.textContent = `Svuota ${name}`;
+  btn.disabled = !n;
+  $('clear-month-hint').textContent = n
+    ? `Cancella ore, descrizioni, ferie, permessi e malattia di ${n === 1 ? '1 giorno' : n + ' giorni'}.`
+    : 'Questo mese non contiene dati.';
+}
+$('clear-month').addEventListener('click', () => {
+  const keys = monthKeysWithData(viewYear, viewMonth);
+  if (!keys.length) return;
+  const name = monthYear.format(new Date(viewYear, viewMonth, 1));
+  if (!confirm(`Svuotare ${name}? Verranno cancellate ore, descrizioni e assenze di ` +
+               `${keys.length === 1 ? '1 giorno' : keys.length + ' giorni'}.\n\n` +
+               `L'operazione non si può annullare: se vuoi, salva prima un backup.`)) return;
+  for (const k of keys) {
+    delete data.hours[k];
+    delete data.notes[k];
+    delete data.absences[k];
+  }
+  saveData();
+  render();
+  updateClearMonth();
+  updateBackupBanner();
+  toast(`${name[0].toUpperCase() + name.slice(1)} svuotato`);
+});
 
 function saveSettings() {
   const patron = $('set-patron').value.trim();
