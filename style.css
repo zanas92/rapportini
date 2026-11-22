@@ -667,3 +667,31 @@ body { overflow-x: clip; max-width: 100%; }
 }
 .card-group .field-label { display: block; }
 .card-group .setting-row { background: var(--bg); }
+
+/* Barra in alto a posti fissi: i pulsanti hanno sempre il loro spazio e il titolo
+   prende solo quello che resta. Così il ☰ non può finire fuori schermo
+   (anche su Safari vecchi, es. iPhone SE 2016 con iOS 15). */
+.topbar {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+}
+body > .topbar {
+  grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
+}
+.menu-btn { margin-left: 0; }
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.icon-btn svg { display: block; width: 24px; height: 24px; flex: none; }
+.month-title { width: 100%; padding: 0 4px; color: var(--text); -webkit-appearance: none; appearance: none; }
+@media (max-width: 340px) {
+  .topbar { grid-template-columns: 38px minmax(0, 1fr) 38px; }
+  body > .topbar { grid-template-columns: 38px minmax(0, 1fr) 38px 38px; }
+}

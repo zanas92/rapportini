@@ -1,7 +1,7 @@
 // Service worker: salva l'app in cache per farla funzionare senza connessione.
 // Quando modifichi i file, incrementa la versione per aggiornare la cache
 // e metti lo stesso numero in APP_VERSION (app.js), che si vede nel menu.
-const CACHE = 'rapportini-v22';
+const CACHE = 'rapportini-v23';
 const FILES = [
   './',
   'index.html',

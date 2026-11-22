@@ -2,7 +2,7 @@
 
 // Versione dell'app, mostrata in fondo al menu ☰.
 // Va tenuta uguale al numero di CACHE in sw.js: si aumentano insieme a ogni modifica.
-const APP_VERSION = 22;
+const APP_VERSION = 23;
 
 // ---- Impostazioni ----
 const STORAGE_KEY = 'rapportini.v1';
