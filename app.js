@@ -9,16 +9,22 @@ const MAX_HOURS = 16;
 // - dailyHours: ore ordinarie al giorno; oltre = straordinario feriale
 // - saturdayWorking: false = settimana lun-ven, le ore del sabato sono straordinario
 // - patron: santo patrono "gg/mm" (festivo come le feste nazionali), vuoto se non usato
-const DEFAULT_SETTINGS = { dailyHours: 8, saturdayWorking: false, patron: '' };
+// - rates: maggiorazioni % di ogni voce (solo etichette: l'app conta le ore, non gli importi)
+const DEFAULT_RATES = { str1: 25, str2: 30, fest: 50, strFest: 55 };
+const DEFAULT_SETTINGS = { dailyHours: 8, saturdayWorking: false, patron: '', rates: DEFAULT_RATES };
 const FIRST_OVERTIME_HOURS = 2;  // le prime 2 ore di straordinario hanno la maggiorazione più bassa
 
 // Voci di straordinario come in busta paga (CCNL Metalmeccanici Industria, non turnisti).
+// Le percentuali si leggono dalle impostazioni (vedi rate/catLabel).
 const OT_CATS = [
-  { id: 'str1',    label: 'Straordinario 25%',          short: 'Straord. 25%' },
-  { id: 'str2',    label: 'Straordinario 30%',          short: 'Straord. 30%' },
-  { id: 'fest',    label: 'Festivo 50%',                short: 'Festivo 50%' },
-  { id: 'strFest', label: 'Straordinario festivo 55%',  short: 'Str. festivo 55%' },
+  { id: 'str1',    name: 'Straordinario',         short: 'Straord.',    pdf: 'Str.' },
+  { id: 'str2',    name: 'Straordinario',         short: 'Straord.',    pdf: 'Str.' },
+  { id: 'fest',    name: 'Festivo',               short: 'Festivo',     pdf: 'Fest.' },
+  { id: 'strFest', name: 'Straordinario festivo', short: 'Str. festivo', pdf: 'Str. fest.' },
 ];
+const rate = cat => String(data.settings.rates[cat.id]).replace('.', ',');
+const catLabel = cat => `${cat.name} ${rate(cat)}%`;
+const catShort = cat => `${cat.short} ${rate(cat)}%`;
 
 // Assenze: "fullDay" = giornata intera (vale le ore ordinarie), altrimenti si scelgono le ore.
 const ABSENCE_TYPES = {
@@ -30,6 +36,16 @@ const ABSENCE_TYPES = {
 function normalizeSettings(s = {}) {
   const out = {};
   for (const k of Object.keys(DEFAULT_SETTINGS)) out[k] = k in s ? s[k] : DEFAULT_SETTINGS[k];
+  out.rates = normalizeRates(s.rates);
+  return out;
+}
+
+function normalizeRates(r) {
+  const out = {};
+  for (const [k, def] of Object.entries(DEFAULT_RATES)) {
+    const v = r && Number(r[k]);
+    out[k] = Number.isFinite(v) && v >= 0 && v <= 300 ? Math.round(v * 100) / 100 : def;
+  }
   return out;
 }
 
@@ -172,7 +188,7 @@ function dayTags(key) {
   for (const cat of OT_CATS) {
     if (!c[cat.id]) continue;
     const cls = cat.id === 'fest' || cat.id === 'strFest' ? 'fest' : 'str';
-    html += `<span class="tag ${cls}">+${formatHours(c[cat.id])} ${cat.label.match(/\d+%/)[0]}</span>`;
+    html += `<span class="tag ${cls}">+${formatHours(c[cat.id])} ${rate(cat)}%</span>`;
   }
   return html;
 }
@@ -202,6 +218,7 @@ const daysEl = $('days');
 function render() {
   const first = new Date(viewYear, viewMonth, 1);
   $('month-title').textContent = monthYear.format(first);
+  $('stats-month-title').textContent = monthYear.format(first);
 
   const today = new Date();
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
@@ -288,7 +305,10 @@ function updateSummary() {
   $('total').textContent = fmt(sum.tot);
   $('days-worked').textContent = entries.length === 1 ? '1 giorno' : `${entries.length} giorni`;
   $('sum-ord').textContent = fmt(sum.ord);
-  for (const cat of OT_CATS) $('sum-' + cat.id).textContent = fmt(sum[cat.id]);
+  for (const cat of OT_CATS) {
+    $('sum-' + cat.id).textContent = fmt(sum[cat.id]);
+    $('lbl-' + cat.id).textContent = catShort(cat);
+  }
 }
 
 // ---- Eventi ----
@@ -362,6 +382,7 @@ function fillSettings() {
   dailySel.value = String(data.settings.dailyHours);
   $('set-saturday').checked = !!data.settings.saturdayWorking;
   $('set-patron').value = data.settings.patron || '';
+  $('rates-summary').textContent = OT_CATS.map(c => rate(c) + '%').join(' · ');
 }
 
 function saveSettings() {
@@ -371,6 +392,7 @@ function saveSettings() {
     return;
   }
   data.settings = {
+    ...data.settings,
     dailyHours: parseFloat(dailySel.value),
     saturdayWorking: $('set-saturday').checked,
     patron,
@@ -381,13 +403,77 @@ function saveSettings() {
 ['set-daily', 'set-saturday', 'set-patron'].forEach(id =>
   $(id).addEventListener('change', saveSettings));
 
-$('prev').addEventListener('click', () => {
+function prevMonth() {
   if (--viewMonth < 0) { viewMonth = 11; viewYear--; }
   render();
-});
-$('next').addEventListener('click', () => {
+}
+function nextMonth() {
   if (++viewMonth > 11) { viewMonth = 0; viewYear++; }
   render();
+}
+$('prev').addEventListener('click', prevMonth);
+$('next').addEventListener('click', nextMonth);
+
+// ---- Pagine a schermo intero (statistiche, maggiorazioni) ----
+let openPage = null;   // { el, onClose }
+function showPage(el, onClose) {
+  if (openPage) return;
+  openPage = { el, onClose };
+  el.hidden = false;
+  el.scrollTop = 0;
+  document.body.classList.add('page-open');
+  // Così il tasto/gesto "indietro" del telefono chiude la pagina
+  // invece di uscire dall'app.
+  history.pushState({ page: el.id }, '');
+}
+function hidePage() {
+  if (!openPage) return;
+  const { el, onClose } = openPage;
+  openPage = null;
+  el.hidden = true;
+  document.body.classList.remove('page-open');
+  if (onClose) onClose();
+}
+// Chiusura dal pulsante: passa dalla cronologia, così resta allineata.
+function closePage() {
+  if (history.state && history.state.page) history.back();
+  else hidePage();
+}
+window.addEventListener('popstate', hidePage);
+document.querySelectorAll('.page-back').forEach(b => b.addEventListener('click', closePage));
+
+$('stats-btn').addEventListener('click', () => showPage($('stats-page')));
+$('stats-prev').addEventListener('click', prevMonth);
+$('stats-next').addEventListener('click', nextMonth);
+
+// Maggiorazioni: si apre dal menu e, chiudendo, si torna al menu.
+const reopenMenu = () => { fillSettings(); menu.showModal(); };
+function fillRates(rates) {
+  for (const cat of OT_CATS) $('rate-' + cat.id).value = String(rates[cat.id]).replace('.', ',');
+}
+$('rates-edit').addEventListener('click', () => {
+  menu.close();
+  fillRates(data.settings.rates);
+  showPage($('rates-page'), reopenMenu);
+});
+$('rates-default').addEventListener('click', () => fillRates(DEFAULT_RATES));
+$('rates-save').addEventListener('click', () => {
+  const rates = {};
+  for (const cat of OT_CATS) {
+    const raw = $('rate-' + cat.id).value.trim().replace(',', '.');
+    const v = Number(raw);
+    if (raw === '' || !Number.isFinite(v) || v < 0 || v > 300) {
+      alert(`Valore non valido per "${cat.name}": scrivi un numero tra 0 e 300.`);
+      $('rate-' + cat.id).focus();
+      return;
+    }
+    rates[cat.id] = Math.round(v * 100) / 100;
+  }
+  data.settings.rates = rates;
+  saveData();
+  render();
+  toast('Maggiorazioni salvate');
+  closePage();
 });
 $('month-title').addEventListener('click', () => {
   const t = new Date();
@@ -471,7 +557,7 @@ const csvCell = s => /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 function buildCsv(keys) {
   // Separatore ";" e virgola decimale: si apre correttamente in Excel italiano.
   const head = ['Data', 'Giorno', 'Festività', 'Ore', 'Ordinarie',
-    ...OT_CATS.map(cat => cat.label), 'Assenza', 'Ore assenza', 'Descrizione'];
+    ...OT_CATS.map(catLabel), 'Assenza', 'Ore assenza', 'Descrizione'];
   const rows = [head.join(';')];
   const tot = { h: 0, ord: 0, str1: 0, str2: 0, fest: 0, strFest: 0 };
   const num = v => v ? decimalIt(v) : '';
@@ -564,8 +650,8 @@ function buildPdf(y, m) {
     startY: 25,
     margin: { left: 10, right: 10 },
     theme: 'grid',
-    head: [['Data', 'Giorno', 'Ore', 'Ordin.', 'Str. 25%', 'Str. 30%', 'Fest. 50%',
-            'Str. fest. 55%', 'Assenza', 'Descrizione']],
+    head: [['Data', 'Giorno', 'Ore', 'Ordin.', ...OT_CATS.map(cat => `${cat.pdf} ${rate(cat)}%`),
+            'Assenza', 'Descrizione']],
     body,
     foot: [['Totale', '', hh(tot.h) || '0 h', hh(tot.ord), ...OT_CATS.map(cat => hh(tot[cat.id])), '', '']],
     styles: { fontSize: 7.5, cellPadding: 1.1, valign: 'middle', lineColor: [210, 214, 220] },
@@ -597,7 +683,7 @@ function buildPdf(y, m) {
   const lines = [
     ['Ore lavorate', hh(tot.h) || '0 h'],
     ['Ordinarie', hh(tot.ord) || '0 h'],
-    ...OT_CATS.map(cat => [cat.label, hh(tot[cat.id]) || '0 h']),
+    ...OT_CATS.map(cat => [catLabel(cat), hh(tot[cat.id]) || '0 h']),
     ['Ferie', giorni(abs.ferie)],
     ['Permessi', hh(abs.permesso) || '0 h'],
     ['Malattia', giorni(abs.malattia)],
