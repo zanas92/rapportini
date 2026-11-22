@@ -996,5 +996,16 @@ updateBackupBanner();
 if (getPin()) showLock('unlock');
 
 if ('serviceWorker' in navigator) {
+  // Quando è pronta una nuova versione dell'app, ricarica la pagina una volta
+  // così si vede subito (senza dover chiudere e riaprire due volte).
+  // Solo se c'era già una versione attiva: al primo avvio non serve.
+  if (navigator.serviceWorker.controller) {
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+  }
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

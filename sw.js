@@ -1,6 +1,6 @@
 // Service worker: salva l'app in cache per farla funzionare senza connessione.
 // Quando modifichi i file, incrementa la versione per aggiornare la cache.
-const CACHE = 'rapportini-v16';
+const CACHE = 'rapportini-v18';
 const FILES = [
   './',
   'index.html',
@@ -15,7 +15,10 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
+  // cache: 'reload' scarica sempre dal server, ignorando la cache HTTP del browser:
+  // altrimenti una nuova versione potrebbe salvare file vecchi.
+  e.waitUntil(caches.open(CACHE).then(c =>
+    c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))));
   self.skipWaiting();
 });
 

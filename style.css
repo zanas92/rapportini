@@ -584,3 +584,49 @@ dialog { max-height: calc(100% - 24px); overflow-y: auto; }
   cursor: pointer;
 }
 .sheet-x:active { background: var(--accent-soft); }
+
+/* ---- Responsive: tutto deve stare nella larghezza dello schermo ----
+   (telefoni stretti da 280px e testo di sistema ingrandito) */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html { overflow-x: hidden; }
+/* clip (non hidden) sul body: non crea un contenitore di scorrimento,
+   così la barra in alto resta fissa mentre si scorre */
+body { overflow-x: clip; max-width: 100%; }
+.page, dialog { overflow-x: hidden; }
+
+/* Barra in alto: il titolo del mese si restringe invece di spingere fuori i pulsanti */
+.month-title, .page-heading, .stats-month-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+.icon-btn { flex: none; }
+
+/* Riepilogo: 3 colonne se c'è spazio, altrimenti 2 (o 1) */
+.summary {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 1fr));
+}
+.summary > div { min-width: 0; overflow-wrap: anywhere; }
+.summary strong { white-space: nowrap; }
+
+/* Riga "Maggiorazioni" nel menu: il pulsante va a capo se serve */
+.setting-row { flex-wrap: wrap; }
+.setting-row > div { min-width: 0; }
+.rate-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* Testi lunghi senza spazi (note, festività) non allargano la riga */
+.date, .note, .tag { min-width: 0; overflow-wrap: break-word; }
+.tag { white-space: normal; }
+
+/* Schermi molto stretti: pulsanti e margini un po' più compatti */
+@media (max-width: 340px) {
+  .topbar { padding-left: 6px; padding-right: 6px; gap: 0; }
+  .icon-btn { width: 38px; }
+  .menu-btn, .stats-btn { margin-left: 0; }
+  .month-title { font-size: 16px; }
+  .day { gap: 8px; padding: 6px 8px 6px 10px; }
+  .date .line { gap: 6px; }
+  .desc-btn { width: 36px; height: 36px; }
+  .hours { min-width: 70px; padding: 0 8px; }
+  .summary, main, .stats-month, .page-body { padding-left: 8px; padding-right: 8px; }
+}
