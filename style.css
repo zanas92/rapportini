@@ -595,10 +595,18 @@ body { overflow-x: clip; max-width: 100%; }
 .page, dialog { overflow-x: hidden; }
 
 /* Barra in alto: il titolo del mese si restringe invece di spingere fuori i pulsanti */
-.month-title, .page-heading, .stats-month-title {
+.page-heading {
   min-width: 0;
   overflow-wrap: anywhere;
   line-height: 1.15;
+}
+/* Mese sempre su una riga (fitTitles in app.js riduce il carattere se serve) */
+.month-title, .stats-month-title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.2;
 }
 .icon-btn { flex: none; }
 
@@ -610,8 +618,9 @@ body { overflow-x: clip; max-width: 100%; }
 .summary strong { white-space: nowrap; }
 
 /* Riga "Maggiorazioni" nel menu: il pulsante va a capo se serve */
-.setting-row { flex-wrap: wrap; }
-.setting-row > div { min-width: 0; }
+/* il pulsante resta a destra; se manca spazio vanno a capo le percentuali */
+.setting-row > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.setting-row .small-btn { flex: none; }
 .rate-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 
 /* Testi lunghi senza spazi (note, festività) non allargano la riga */
@@ -630,3 +639,5 @@ body { overflow-x: clip; max-width: 100%; }
   .hours { min-width: 70px; padding: 0 8px; }
   .summary, main, .stats-month, .page-body { padding-left: 8px; padding-right: 8px; }
 }
+
+.app-version { margin-top: 2px; font-size: 12px; }

@@ -1,5 +1,9 @@
 'use strict';
 
+// Versione dell'app, mostrata in fondo al menu ⋯.
+// Va tenuta uguale al numero di CACHE in sw.js: si aumentano insieme a ogni modifica.
+const APP_VERSION = 20;
+
 // ---- Impostazioni ----
 const STORAGE_KEY = 'rapportini.v1';
 const STEP = 0.5;   // passo del selettore (0.5 = mezz'ora, 0.25 = quarto d'ora)
@@ -215,10 +219,40 @@ let viewMonth = now.getMonth();
 const $ = id => document.getElementById(id);
 const daysEl = $('days');
 
-function render() {
+// Titolo del mese sempre su una riga: se non ci sta, riduce il carattere quanto basta.
+// La misura si fa sul mese più lungo ("settembre"), così la dimensione resta
+// uguale per tutti i mesi e non cambia passando dall'uno all'altro.
+const FIT_TITLES = ['month-title', 'stats-month-title'];
+function fitTitles() {
+  for (const id of FIT_TITLES) {
+    const el = $(id);
+    el.style.fontSize = '';
+    if (!el.clientWidth) continue;   // pagina nascosta: si sistema quando si apre
+    const text = el.textContent;
+    el.textContent = monthYear.format(new Date(viewYear, 8, 1));
+    const cs = getComputedStyle(el);
+    const room = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 2;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    let size = parseFloat(cs.fontSize);
+    while (range.getBoundingClientRect().width > room && size > 12) {
+      size -= 0.5;
+      el.style.fontSize = size + 'px';
+    }
+    el.textContent = text;
+  }
+}
+window.addEventListener('resize', fitTitles);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitles);
+
+// scroll: 'keep' = resta dove sei (default), 'top' = dal primo giorno, 'today' = porta in vista oggi.
+// dir: 1 / -1 = animazione verso il mese successivo / precedente.
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function render({ scroll = 'keep', dir = 0 } = {}) {
   const first = new Date(viewYear, viewMonth, 1);
   $('month-title').textContent = monthYear.format(first);
   $('stats-month-title').textContent = monthYear.format(first);
+  fitTitles();
 
   const today = new Date();
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
@@ -269,10 +303,22 @@ function render() {
   daysEl.replaceChildren(frag);
   updateSummary();
 
-  // Nel mese corrente porta in vista il giorno di oggi.
-  const todayEl = daysEl.querySelector('.today');
-  if (todayEl) todayEl.scrollIntoView({ block: 'center' });
-  else window.scrollTo(0, 0);
+  if (scroll === 'today') {
+    // Nel mese corrente porta in vista il giorno di oggi.
+    const todayEl = daysEl.querySelector('.today');
+    if (todayEl) todayEl.scrollIntoView({ block: 'center' });
+    else window.scrollTo(0, 0);
+  } else if (scroll === 'top') {
+    window.scrollTo(0, 0);
+  }
+
+  // Cambio mese: la lista entra scorrendo un po' di lato, come una pagina che gira.
+  if (dir && !reduceMotion && daysEl.animate) {
+    daysEl.animate([
+      { opacity: 0, transform: `translateX(${dir * 32}px)` },
+      { opacity: 1, transform: 'none' },
+    ], { duration: 200, easing: 'cubic-bezier(.2, .7, .3, 1)' });
+  }
 }
 
 function monthEntries(y, m) {
@@ -367,9 +413,7 @@ function saveDay() {
   }
   saveData();
   noteDialog.close();
-  const y = window.scrollY;
   render();
-  window.scrollTo(0, y);
 }
 
 $('note-save').addEventListener('click', saveDay);
@@ -405,11 +449,11 @@ function saveSettings() {
 
 function prevMonth() {
   if (--viewMonth < 0) { viewMonth = 11; viewYear--; }
-  render();
+  render({ scroll: 'top', dir: -1 });
 }
 function nextMonth() {
   if (++viewMonth > 11) { viewMonth = 0; viewYear++; }
-  render();
+  render({ scroll: 'top', dir: 1 });
 }
 $('prev').addEventListener('click', prevMonth);
 $('next').addEventListener('click', nextMonth);
@@ -442,7 +486,7 @@ function closePage() {
 window.addEventListener('popstate', hidePage);
 document.querySelectorAll('.page-back').forEach(b => b.addEventListener('click', closePage));
 
-$('stats-btn').addEventListener('click', () => showPage($('stats-page')));
+$('stats-btn').addEventListener('click', () => { showPage($('stats-page')); fitTitles(); });
 $('stats-prev').addEventListener('click', prevMonth);
 $('stats-next').addEventListener('click', nextMonth);
 
@@ -478,8 +522,10 @@ $('rates-save').addEventListener('click', () => {
 $('month-title').addEventListener('click', () => {
   const t = new Date();
   viewYear = t.getFullYear();
+  const dir = Math.sign((t.getFullYear() - viewYear) * 12 + t.getMonth() - viewMonth);
+  viewYear = t.getFullYear();
   viewMonth = t.getMonth();
-  render();
+  render({ scroll: 'today', dir });
 });
 
 // ---- Esportazione ----
@@ -991,7 +1037,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---- Avvio ----
-render();
+$('app-version').textContent = 'Versione ' + APP_VERSION;
+render({ scroll: 'today' });
 updateBackupBanner();
 if (getPin()) showLock('unlock');
 
