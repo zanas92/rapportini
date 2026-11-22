@@ -1,15 +1,15 @@
 'use strict';
 
-// Versione dell'app, mostrata in fondo al menu ⋯.
+// Versione dell'app, mostrata in fondo al menu ☰.
 // Va tenuta uguale al numero di CACHE in sw.js: si aumentano insieme a ogni modifica.
-const APP_VERSION = 20;
+const APP_VERSION = 22;
 
 // ---- Impostazioni ----
 const STORAGE_KEY = 'rapportini.v1';
 const STEP = 0.5;   // passo del selettore (0.5 = mezz'ora, 0.25 = quarto d'ora)
 const MAX_HOURS = 16;
 
-// Regole straordinari (modificabili dal menu):
+// Regole straordinari (modificabili da Menu → Impostazioni):
 // - dailyHours: ore ordinarie al giorno; oltre = straordinario feriale
 // - saturdayWorking: false = settimana lun-ven, le ore del sabato sono straordinario
 // - patron: santo patrono "gg/mm" (festivo come le feste nazionali), vuoto se non usato
@@ -458,25 +458,27 @@ function nextMonth() {
 $('prev').addEventListener('click', prevMonth);
 $('next').addEventListener('click', nextMonth);
 
-// ---- Pagine a schermo intero (statistiche, maggiorazioni) ----
-let openPage = null;   // { el, onClose }
+// ---- Pagine a schermo intero (statistiche, esporta, impostazioni, maggiorazioni) ----
+// Le pagine si impilano: Impostazioni → Maggiorazioni, e "indietro" torna alla precedente.
+const pageStack = [];   // [{ el, onClose }]
 function showPage(el, onClose) {
-  if (openPage) return;
-  openPage = { el, onClose };
+  if (pageStack.some(p => p.el === el)) return;
+  pageStack.push({ el, onClose });
+  el.style.zIndex = 20 + pageStack.length;
   el.hidden = false;
   el.scrollTop = 0;
   document.body.classList.add('page-open');
   // Così il tasto/gesto "indietro" del telefono chiude la pagina
   // invece di uscire dall'app.
   history.pushState({ page: el.id }, '');
+  fitTitles();
 }
 function hidePage() {
-  if (!openPage) return;
-  const { el, onClose } = openPage;
-  openPage = null;
-  el.hidden = true;
-  document.body.classList.remove('page-open');
-  if (onClose) onClose();
+  const top = pageStack.pop();
+  if (!top) return;
+  top.el.hidden = true;
+  if (!pageStack.length) document.body.classList.remove('page-open');
+  if (top.onClose) top.onClose();
 }
 // Chiusura dal pulsante: passa dalla cronologia, così resta allineata.
 function closePage() {
@@ -486,19 +488,34 @@ function closePage() {
 window.addEventListener('popstate', hidePage);
 document.querySelectorAll('.page-back').forEach(b => b.addEventListener('click', closePage));
 
-$('stats-btn').addEventListener('click', () => { showPage($('stats-page')); fitTitles(); });
+// ---- Menu ☰ (pagina a tutto schermo) ----
+// Le voci aprono la loro pagina sopra il menu: "indietro" torna al menu, × ai giorni.
+$('menu-btn').addEventListener('click', () => showPage($('menu-page')));
+
+function openFromMenu(id, prepare) {
+  if (prepare) prepare();
+  showPage($(id));
+}
+$('nav-stats').addEventListener('click', () => openFromMenu('stats-page'));
+$('nav-export').addEventListener('click', () => openFromMenu('export-page', () => {
+  updateLastBackup();
+  loadPdfLib().catch(() => {});  // pronto in anticipo, così il PDF parte subito
+}));
+$('nav-settings').addEventListener('click', () => openFromMenu('settings-page', () => {
+  fillSettings();
+  updatePinButtons();
+}));
+
 $('stats-prev').addEventListener('click', prevMonth);
 $('stats-next').addEventListener('click', nextMonth);
 
-// Maggiorazioni: si apre dal menu e, chiudendo, si torna al menu.
-const reopenMenu = () => { fillSettings(); menu.showModal(); };
+// Maggiorazioni: si apre da Impostazioni; chiudendo si torna lì, aggiornata.
 function fillRates(rates) {
   for (const cat of OT_CATS) $('rate-' + cat.id).value = String(rates[cat.id]).replace('.', ',');
 }
 $('rates-edit').addEventListener('click', () => {
-  menu.close();
   fillRates(data.settings.rates);
-  showPage($('rates-page'), reopenMenu);
+  showPage($('rates-page'), fillSettings);
 });
 $('rates-default').addEventListener('click', () => fillRates(DEFAULT_RATES));
 $('rates-save').addEventListener('click', () => {
@@ -521,7 +538,6 @@ $('rates-save').addEventListener('click', () => {
 });
 $('month-title').addEventListener('click', () => {
   const t = new Date();
-  viewYear = t.getFullYear();
   const dir = Math.sign((t.getFullYear() - viewYear) * 12 + t.getMonth() - viewMonth);
   viewYear = t.getFullYear();
   viewMonth = t.getMonth();
@@ -529,20 +545,11 @@ $('month-title').addEventListener('click', () => {
 });
 
 // ---- Esportazione ----
-const menu = $('menu');
-
 function updateLastBackup() {
   $('last-backup').textContent = data.lastBackup
     ? 'Ultimo backup: ' + new Date(data.lastBackup).toLocaleDateString('it-IT')
     : 'Nessun backup ancora salvato.';
 }
-
-$('menu-btn').addEventListener('click', () => {
-  updateLastBackup();
-  loadPdfLib().catch(() => {});
-  fillSettings();
-  menu.showModal();
-});
 
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
 // iPhone e iPad (anche iPadOS che si presenta come Mac, ma con schermo touch).
@@ -862,7 +869,6 @@ $('restore-file').addEventListener('change', async e => {
     Object.assign(data.absences, inAbs);
     if (parsed.settings) data.settings = normalizeSettings(parsed.settings);
     saveData();
-    menu.close();
     render();
     alert('Backup ripristinato.');
   } catch (err) {
@@ -908,7 +914,6 @@ function showLock(mode, message) {
   pinMode = mode;
   pinBuffer = '';
   if (mode === 'set') pinFirst = '';
-  if (menu.open) menu.close();
   if (noteDialog.open) noteDialog.close();
   const defaults = {
     unlock: 'Inserisci il PIN',
@@ -926,6 +931,7 @@ function hideLock() {
   pinMode = null;
   pinBuffer = '';
   document.documentElement.classList.remove('locked');
+  updatePinButtons();
 }
 
 function pinError(text) {
@@ -1015,7 +1021,6 @@ function updatePinButtons() {
   $('pin-remove').hidden = !has;
 }
 
-$('menu-btn').addEventListener('click', updatePinButtons);
 $('pin-set').addEventListener('click', () => showLock('set'));
 $('pin-remove').addEventListener('click', () => {
   if (!confirm('Rimuovere il PIN? L\'app si aprirà senza protezione.')) return;

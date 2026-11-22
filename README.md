@@ -15,7 +15,7 @@ python3 -m http.server 8000
 poi apri http://localhost:8000
 
 ## Backup
-Menu ⋯ → *Salva backup completo (JSON)*; si ripristina con *Ripristina da backup*.
+Menu ☰ → *Esporta e backup* → *Salva backup completo (JSON)*; si ripristina con *Ripristina da backup*.
 L'export CSV si apre direttamente in Excel.
 
 Dove finiscono i file:

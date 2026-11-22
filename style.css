@@ -63,7 +63,7 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .icon-btn:active { background: var(--accent-soft); }
-.menu-btn { font-size: 22px; margin-left: 4px; }
+.menu-btn { display: inline-flex; align-items: center; justify-content: center; margin-left: 4px; }
 
 .month-title {
   flex: 1;
@@ -464,7 +464,6 @@ dialog { max-height: calc(100% - 24px); overflow-y: auto; }
 }
 
 /* Pagine a schermo intero (statistiche, maggiorazioni) */
-.stats-btn { display: inline-flex; align-items: center; justify-content: center; margin-left: 4px; }
 .page {
   position: fixed;
   inset: 0;
@@ -557,33 +556,6 @@ dialog { max-height: calc(100% - 24px); overflow-y: auto; }
   text-align: right;
 }
 
-/* Intestazione del menu con la X per chiudere (resta in vista scorrendo) */
-.sheet-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: -18px -18px 0;
-  padding: 12px 10px 6px 18px;
-  background: var(--card);
-}
-.sheet-head h2 { margin: 0; }
-.sheet-x {
-  width: 40px;
-  height: 40px;
-  flex: none;
-  border: 0;
-  border-radius: 50%;
-  background: var(--bg);
-  color: var(--muted);
-  font-size: 26px;
-  line-height: 1;
-  cursor: pointer;
-}
-.sheet-x:active { background: var(--accent-soft); }
 
 /* ---- Responsive: tutto deve stare nella larghezza dello schermo ----
    (telefoni stretti da 280px e testo di sistema ingrandito) */
@@ -631,7 +603,7 @@ body { overflow-x: clip; max-width: 100%; }
 @media (max-width: 340px) {
   .topbar { padding-left: 6px; padding-right: 6px; gap: 0; }
   .icon-btn { width: 38px; }
-  .menu-btn, .stats-btn { margin-left: 0; }
+  .menu-btn { margin-left: 0; }
   .month-title { font-size: 16px; }
   .day { gap: 8px; padding: 6px 8px 6px 10px; }
   .date .line { gap: 6px; }
@@ -641,3 +613,57 @@ body { overflow-x: clip; max-width: 100%; }
 }
 
 .app-version { margin-top: 2px; font-size: 12px; }
+
+/* Menu ☰: pagina a tutto schermo con l'elenco delle voci */
+.page-x { font-size: 32px; color: var(--muted); }
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+  border-radius: 14px;
+  background: var(--card);
+  overflow: hidden;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 58px;
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item svg { flex: none; color: var(--accent); }
+.menu-item::after {
+  content: "\203A";
+  margin-left: auto;
+  font-size: 24px;
+  color: var(--muted);
+}
+.menu-item + .menu-item { border-top: 1px solid var(--line); }
+.menu-item:active { background: var(--accent-soft); }
+#menu-page .app-version { margin-top: 12px; }
+
+/* Pagine Esporta e Impostazioni */
+.page-sub {
+  margin: 10px 2px 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.card-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--card);
+}
+.card-group .field-label { display: block; }
+.card-group .setting-row { background: var(--bg); }

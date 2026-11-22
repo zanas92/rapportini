@@ -45,13 +45,12 @@
     <button class="icon-btn" id="prev" aria-label="Mese precedente">&#8249;</button>
     <button class="month-title" id="month-title" aria-label="Torna al mese corrente"></button>
     <button class="icon-btn" id="next" aria-label="Mese successivo">&#8250;</button>
-    <button class="icon-btn stats-btn" id="stats-btn" aria-label="Statistiche del mese">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-        <path d="M5 20V11M12 20V4M19 20v-6" fill="none" stroke="currentColor"
-              stroke-width="2.4" stroke-linecap="round"/>
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"/>
       </svg>
     </button>
-    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Esporta e backup">&#8943;</button>
   </header>
 
   <div class="banner" id="backup-banner" role="status" hidden>
@@ -85,6 +84,90 @@
     <div><span class="label">Permessi</span><strong id="sum-perm">0 h</strong></div>
     <div id="tile-mal" hidden><span class="label">Malattia</span><strong id="sum-mal">0 g</strong></div>
   </section>
+  </div>
+
+  <div class="page" id="menu-page" role="dialog" aria-modal="true" aria-labelledby="menu-heading" hidden>
+    <header class="topbar">
+      <span class="icon-btn-spacer"></span>
+      <h1 class="page-heading" id="menu-heading">Menu</h1>
+      <button class="icon-btn page-back page-x" aria-label="Chiudi menu">&times;</button>
+    </header>
+    <div class="page-body">
+      <nav class="menu-list">
+        <button type="button" class="menu-item" id="nav-stats">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M5 20V11M12 20V4M19 20v-6" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+          Statistiche
+        </button>
+        <button type="button" class="menu-item" id="nav-export">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Esporta e backup
+        </button>
+        <button type="button" class="menu-item" id="nav-settings">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M4 7h10M18 7h2M4 17h2M10 17h10" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2.2"/>
+            <circle cx="8" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2.2"/>
+          </svg>
+          Impostazioni
+        </button>
+      </nav>
+      <p class="hint app-version" id="app-version"></p>
+    </div>
+  </div>
+
+  <div class="page" id="export-page" role="dialog" aria-modal="true" aria-labelledby="export-heading" hidden>
+    <header class="topbar">
+      <button class="icon-btn page-back" aria-label="Indietro">&#8249;</button>
+      <h1 class="page-heading" id="export-heading">Esporta e backup</h1>
+      <span class="icon-btn-spacer"></span>
+    </header>
+    <div class="page-body">
+      <h2 class="page-sub">Esporta</h2>
+      <button type="button" class="sheet-btn" id="export-pdf">Esporta mese (PDF)</button>
+      <button type="button" class="sheet-btn" id="export-month">Esporta mese (CSV / Excel)</button>
+      <button type="button" class="sheet-btn" id="export-all">Esporta tutto (CSV / Excel)</button>
+      <h2 class="page-sub">Backup</h2>
+      <button type="button" class="sheet-btn" id="backup">Salva backup completo (JSON)</button>
+      <button type="button" class="sheet-btn" id="restore">Ripristina da backup&hellip;</button>
+      <p class="hint" id="last-backup"></p>
+    </div>
+  </div>
+
+  <div class="page" id="settings-page" role="dialog" aria-modal="true" aria-labelledby="settings-heading" hidden>
+    <header class="topbar">
+      <button class="icon-btn page-back" aria-label="Indietro">&#8249;</button>
+      <h1 class="page-heading" id="settings-heading">Impostazioni</h1>
+      <span class="icon-btn-spacer"></span>
+    </header>
+    <div class="page-body">
+      <h2 class="page-sub">Orario e straordinari</h2>
+      <div class="card-group">
+        <label class="field-label" for="set-daily">Ore ordinarie al giorno (oltre = straordinario)</label>
+        <select id="set-daily" class="field"></select>
+        <label class="check"><input type="checkbox" id="set-saturday"> Il sabato è giorno lavorativo</label>
+        <label class="field-label" for="set-patron">Santo patrono (gg/mm, facoltativo)</label>
+        <input id="set-patron" class="field" inputmode="numeric" placeholder="es. 24/06" maxlength="5">
+        <div class="setting-row">
+          <div>
+            <span class="field-label">Maggiorazioni</span>
+            <strong id="rates-summary"></strong>
+          </div>
+          <button type="button" class="small-btn" id="rates-edit">Modifica</button>
+        </div>
+      </div>
+      <h2 class="page-sub">Sicurezza</h2>
+      <div class="card-group">
+        <button type="button" class="sheet-btn" id="pin-set">Imposta PIN</button>
+        <button type="button" class="sheet-btn danger" id="pin-remove">Rimuovi PIN</button>
+      </div>
+    </div>
   </div>
 
   <div class="page" id="rates-page" role="dialog" aria-modal="true" aria-labelledby="rates-heading" hidden>
@@ -123,38 +206,6 @@
     <ul class="days" id="days"></ul>
   </main>
 
-  <dialog id="menu">
-    <form method="dialog" class="sheet">
-      <div class="sheet-head">
-        <h2>Esporta e backup</h2>
-        <button class="sheet-x" id="menu-x" aria-label="Chiudi">&times;</button>
-      </div>
-      <button type="button" class="sheet-btn" id="export-pdf">Esporta mese (PDF)</button>
-      <button type="button" class="sheet-btn" id="export-month">Esporta mese (CSV / Excel)</button>
-      <button type="button" class="sheet-btn" id="export-all">Esporta tutto (CSV / Excel)</button>
-      <button type="button" class="sheet-btn" id="backup">Salva backup completo (JSON)</button>
-      <button type="button" class="sheet-btn" id="restore">Ripristina da backup&hellip;</button>
-      <p class="hint" id="last-backup"></p>
-      <h2 class="sheet-sub">Orario e straordinari</h2>
-      <label class="field-label" for="set-daily">Ore ordinarie al giorno (oltre = straordinario)</label>
-      <select id="set-daily" class="field"></select>
-      <label class="check"><input type="checkbox" id="set-saturday"> Il sabato è giorno lavorativo</label>
-      <label class="field-label" for="set-patron">Santo patrono (gg/mm, facoltativo)</label>
-      <input id="set-patron" class="field" inputmode="numeric" placeholder="es. 24/06" maxlength="5">
-      <div class="setting-row">
-        <div>
-          <span class="field-label">Maggiorazioni</span>
-          <strong id="rates-summary"></strong>
-        </div>
-        <button type="button" class="small-btn" id="rates-edit">Modifica</button>
-      </div>
-      <h2 class="sheet-sub">Sicurezza</h2>
-      <button type="button" class="sheet-btn" id="pin-set">Imposta PIN</button>
-      <button type="button" class="sheet-btn danger" id="pin-remove">Rimuovi PIN</button>
-      <button class="sheet-btn close">Chiudi</button>
-      <p class="hint app-version" id="app-version"></p>
-    </form>
-  </dialog>
 
   <dialog id="note-dialog">
     <form method="dialog" class="sheet">
