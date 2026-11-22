@@ -2,7 +2,7 @@
 
 // Versione dell'app, mostrata in fondo al menu ☰.
 // Va tenuta uguale al numero di CACHE in sw.js: si aumentano insieme a ogni modifica.
-const APP_VERSION = 27;
+const APP_VERSION = 32;
 
 // ---- Impostazioni ----
 const STORAGE_KEY = 'rapportini.v1';
@@ -37,11 +37,39 @@ const ABSENCE_TYPES = {
   malattia: { label: 'Malattia', fullDay: true },
 };
 
-function normalizeSettings(s = {}) {
-  const out = {};
-  for (const k of Object.keys(DEFAULT_SETTINGS)) out[k] = k in s ? s[k] : DEFAULT_SETTINGS[k];
-  out.rates = normalizeRates(s.rates);
-  return out;
+// Accetta solo chiavi proprie: ABSENCE_TYPES["constructor"] o ["toString"] esistono
+// su ogni oggetto e farebbero passare un tipo inesistente.
+const isAbsenceType = t => typeof t === 'string' && Object.prototype.hasOwnProperty.call(ABSENCE_TYPES, t);
+
+// Santo patrono "gg/mm" con una data che esiste (29/02 ammesso: vale negli anni bisestili).
+function validPatron(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})$/.exec(s);
+  if (!m) return false;
+  const d = Number(m[1]), mo = Number(m[2]);
+  return mo >= 1 && mo <= 12 && d >= 1 && d <= new Date(2024, mo, 0).getDate();
+}
+
+// Valida ogni impostazione: valori assenti o non validi (es. da un backup alterato)
+// tornano al predefinito.
+function normalizeSettings(s) {
+  if (!s || typeof s !== 'object') s = {};
+  const d = Number(s.dailyHours);
+  const patron = typeof s.patron === 'string' ? s.patron.trim() : '';
+  return {
+    dailyHours: Number.isFinite(d) && d >= 4 && d <= 10 && d * 2 === Math.round(d * 2)
+      ? d : DEFAULT_SETTINGS.dailyHours,
+    saturdayWorking: s.saturdayWorking === true,
+    patron: validPatron(patron) ? patron : '',
+    rates: normalizeRates(s.rates),
+  };
+}
+
+// Assenza valida o null. Le ore di un permesso vanno da 30 min a 16 h.
+function normalizeAbsence(v) {
+  if (!v || typeof v !== 'object' || !isAbsenceType(v.type)) return null;
+  const h = Number(v.hours);
+  if (!Number.isFinite(h) || h <= 0 || h > MAX_HOURS) return null;
+  return { type: v.type, hours: h };
 }
 
 function normalizeRates(r) {
@@ -57,22 +85,59 @@ function normalizeRates(r) {
 // Formato: { version: 1, hours: { "2026-11-21": 8.5 }, notes: { "2026-11-21": "testo" },
 //            absences: { "2026-11-21": { type: "ferie" | "permesso" | "malattia", hours: 8 } },
 //            settings: {...}, lastBackup }
+// Copie dei dati illeggibili: "rapportini.v1.danneggiati.<data e ora>".
+const CORRUPT_PREFIX = STORAGE_KEY + '.danneggiati.';
+let corruptFound = false;    // all'avvio i dati c'erano ma non si leggevano
+let corruptUnsaved = false;  // ...e non è stato possibile metterli da parte: non sovrascriverli
+
 let data = loadData();
 
-function loadData() {
+function corruptKeys() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (parsed && typeof parsed.hours === 'object') {
+    return Object.keys(localStorage).filter(k => k.startsWith(CORRUPT_PREFIX)).sort();
+  } catch (e) { return []; }
+}
+
+// Prima di ripartire vuota, mette da parte i dati che non si leggono:
+// il primo salvataggio li sovrascriverebbe e andrebbero persi.
+function keepCorrupt(raw) {
+  corruptFound = true;
+  try {
+    if (corruptKeys().some(k => localStorage.getItem(k) === raw)) return;  // copia già fatta
+    localStorage.setItem(CORRUPT_PREFIX + new Date().toISOString(), raw);
+  } catch (e) {
+    corruptUnsaved = true;
+  }
+}
+
+function loadData() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { /* storage non disponibile */ }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.hours && typeof parsed.hours === 'object') {
       if (!parsed.notes || typeof parsed.notes !== 'object') parsed.notes = {};
       if (!parsed.absences || typeof parsed.absences !== 'object') parsed.absences = {};
+      // Scarta assenze non valide già salvate, così un dato rovinato non blocca l'avvio.
+      for (const [k, v] of Object.entries(parsed.absences)) {
+        const a = normalizeAbsence(v);
+        if (a) parsed.absences[k] = a; else delete parsed.absences[k];
+      }
       parsed.settings = normalizeSettings(parsed.settings);
       return parsed;
     }
-  } catch (e) { /* dati assenti o corrotti */ }
+  } catch (e) { /* dati corrotti: gestiti qui sotto */ }
+  if (raw !== null) keepCorrupt(raw);
   return { version: 1, hours: {}, notes: {}, absences: {}, settings: normalizeSettings() };
 }
 
 function saveData() {
+  if (corruptUnsaved) {
+    alert('I dati salvati in precedenza non si leggono e non è stato possibile farne una copia: ' +
+          'per non perderli, le modifiche non vengono salvate. Ripristina un backup ' +
+          '(Menu → Esporta e backup).');
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (e) {
@@ -365,6 +430,10 @@ daysEl.addEventListener('change', e => {
   saveData();
   updateSummary();
   updateBackupBanner();
+  const a = data.absences[key];
+  if (sel.value !== '' && a && ABSENCE_TYPES[a.type].fullDay) {
+    toast(`Attenzione: questo giorno è segnato come ${ABSENCE_TYPES[a.type].label.toLowerCase()}`);
+  }
 });
 
 // ---- Note ----
@@ -372,19 +441,36 @@ const noteDialog = $('note-dialog');
 const noteText = $('note-text');
 let noteKey = null;
 
-daysEl.addEventListener('click', e => {
-  const btn = e.target.closest('button.desc-btn');
-  if (!btn) return;
-  noteKey = btn.dataset.key;
-  const t = weekdayLong.format(parseKey(noteKey)) + ' ' +
-    parseKey(noteKey).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' });
+// Apre la scheda del giorno. draft = { text, type, hours } per riaprirla con
+// quanto si stava scrivendo (es. dopo la richiesta del PIN).
+function openNote(key, draft) {
+  noteKey = key;
+  const t = weekdayLong.format(parseKey(key)) + ' ' +
+    parseKey(key).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' });
   $('note-title').textContent = t;
-  noteText.value = data.notes[noteKey] || '';
-  const a = data.absences[noteKey];
-  $('abs-type').value = a ? a.type : '';
-  $('abs-hours').value = a && !ABSENCE_TYPES[a.type].fullDay ? String(a.hours) : '1';
+  const a = data.absences[key];
+  const absHours = draft ? draft.hours
+    : a && !ABSENCE_TYPES[a.type].fullDay ? String(a.hours) : '1';
+  noteText.value = draft ? draft.text : data.notes[key] || '';
+  $('abs-type').value = draft ? draft.type : a ? a.type : '';
+  // Ore di permesso fuori elenco (es. 2 h 15 da un backup): le aggiunge, come per le ore lavorate,
+  // altrimenti il menu resterebbe vuoto e il permesso si perderebbe al salvataggio.
+  const absSel = $('abs-hours');
+  absSel.querySelectorAll('option.extra').forEach(o => o.remove());
+  if (!absSel.querySelector(`option[value="${absHours}"]`)) {
+    const opt = new Option(formatHours(Number(absHours)), absHours);
+    opt.className = 'extra';
+    const after = [...absSel.options].find(o => Number(o.value) > Number(absHours));
+    absSel.add(opt, after || null);
+  }
+  absSel.value = absHours;
   updateAbsHours();
   noteDialog.showModal();
+}
+
+daysEl.addEventListener('click', e => {
+  const btn = e.target.closest('button.desc-btn');
+  if (btn) openNote(btn.dataset.key);
 });
 
 function updateAbsHours() {
@@ -398,6 +484,9 @@ function saveDay() {
   if (text) data.notes[noteKey] = text;
   else delete data.notes[noteKey];
   const type = $('abs-type').value;
+  if (type && ABSENCE_TYPES[type].fullDay && data.hours[noteKey]) {
+    toast(`Attenzione: in questo giorno ci sono anche ${formatHours(data.hours[noteKey])} lavorate`);
+  }
   if (type) {
     data.absences[noteKey] = {
       type,
@@ -495,6 +584,10 @@ function saveSettings() {
     alert('Scrivi il santo patrono nel formato gg/mm, es. 24/06.');
     return;
   }
+  if (patron && !validPatron(patron)) {
+    alert(`La data ${patron} non esiste: controlla giorno e mese (gg/mm, es. 24/06).`);
+    return;
+  }
   data.settings = {
     ...data.settings,
     dailyHours: parseFloat(dailySel.value),
@@ -530,7 +623,7 @@ function showPage(el, onClose) {
   document.body.classList.add('page-open');
   // Così il tasto/gesto "indietro" del telefono chiude la pagina
   // invece di uscire dall'app.
-  history.pushState({ page: el.id }, '');
+  history.pushState({ page: el.id, depth: pageStack.length }, '');
   fitTitles();
 }
 function hidePage() {
@@ -539,7 +632,11 @@ function hidePage() {
   top.el.hidden = true;
   if (!pageStack.length) document.body.classList.remove('page-open');
   if (top.onClose) top.onClose();
+  reloadIfPending();
 }
+// Ricaricando con una pagina aperta, la cronologia conserva le sue voci ma la pagina
+// riparte chiusa: si torna indietro di quante erano, così "indietro" esce al primo colpo.
+if (history.state && history.state.depth > 0) history.go(-history.state.depth);
 // Chiusura dal pulsante: passa dalla cronologia, così resta allineata.
 function closePage() {
   if (history.state && history.state.page) history.back();
@@ -665,7 +762,12 @@ function exportKeys(prefix = '') {
   return [...keys].filter(k => k.startsWith(prefix)).sort();
 }
 
-const csvCell = s => /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+// Testo che inizia con = + - @ Excel lo legge come formula ("- cambiato filtro" → #NOME?):
+// l'apostrofo davanti gli dice che è testo.
+const csvCell = s => {
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
 
 function buildCsv(keys) {
   // Separatore ";" e virgola decimale: si apre correttamente in Excel italiano.
@@ -683,7 +785,9 @@ function buildCsv(keys) {
       `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`,
       weekdayLong.format(date), holidayName(k), num(h), num(c.ord),
       ...OT_CATS.map(cat => num(c[cat.id])),
-      a ? ABSENCE_TYPES[a.type].label : '', a ? decimalIt(a.hours) : '',
+      // Ferie e malattia valgono le ore ordinarie attuali, come il resto dei conteggi.
+      a ? ABSENCE_TYPES[a.type].label : '',
+      a ? decimalIt(ABSENCE_TYPES[a.type].fullDay ? data.settings.dailyHours : a.hours) : '',
       csvCell(data.notes[k] || ''),
     ].join(';'));
     tot.h += h; tot.ord += c.ord;
@@ -908,22 +1012,26 @@ $('restore-file').addEventListener('change', async e => {
   if (!file) return;
   try {
     const parsed = JSON.parse(await file.text());
+    if (!parsed || typeof parsed !== 'object') throw new Error('formato sconosciuto');
     const isKey = k => /^\d{4}-\d{2}-\d{2}$/.test(k);
+    const obj = v => v && typeof v === 'object' ? v : {};
     const inHours = {}, inNotes = {}, inAbs = {};
-    for (const [k, v] of Object.entries(parsed.hours || {})) {
+    for (const [k, v] of Object.entries(obj(parsed.hours))) {
       if (isKey(k) && typeof v === 'number' && v > 0 && v <= 24) inHours[k] = v;
     }
-    for (const [k, v] of Object.entries(parsed.notes || {})) {
-      if (isKey(k) && typeof v === 'string' && v.trim()) inNotes[k] = v.trim();
+    for (const [k, v] of Object.entries(obj(parsed.notes))) {
+      if (isKey(k) && typeof v === 'string' && v.trim()) inNotes[k] = v.trim().slice(0, 500);
     }
-    for (const [k, v] of Object.entries(parsed.absences || {})) {
-      if (isKey(k) && v && ABSENCE_TYPES[v.type] && typeof v.hours === 'number') inAbs[k] = v;
+    for (const [k, v] of Object.entries(obj(parsed.absences))) {
+      const a = isKey(k) && normalizeAbsence(v);
+      if (a) inAbs[k] = a;
     }
     const n = new Set([...Object.keys(inHours), ...Object.keys(inNotes),
                        ...Object.keys(inAbs)]).size;
     if (!n) return alert('Il file non contiene dati validi.');
     if (!confirm(`Il backup contiene ${n} giorni. Unirli ai dati attuali? ` +
                  `(I giorni presenti in entrambi verranno sovrascritti dal backup.)`)) return;
+    corruptUnsaved = false;  // si è scelto di ripartire dal backup
     Object.assign(data.hours, inHours);
     Object.assign(data.notes, inNotes);
     Object.assign(data.absences, inAbs);
@@ -945,13 +1053,50 @@ const MAX_ATTEMPTS = 5;
 const BLOCK_MS = 30 * 1000;
 
 let pinMode = null;      // 'unlock' | 'set' | 'confirm'
+let noteDraft = null;    // scheda del giorno aperta quando è comparso il PIN, da riaprire dopo
 let pinBuffer = '';
 let pinFirst = '';
-let failCount = 0;
-let blockedUntil = 0;
+let blockTimer = null;
 
 function getPin() {
   try { return JSON.parse(localStorage.getItem(PIN_KEY)); } catch (e) { return null; }
+}
+
+// Tentativi sbagliati e blocco sono salvati sul dispositivo: ricaricare la pagina
+// non li azzera. { fails: tentativi sbagliati di fila, until: fine del blocco (ms) }
+const PIN_LOCK_KEY = 'rapportini.pinlock';
+function getPinLock() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PIN_LOCK_KEY)) || {};
+    const fails = Number(v.fails) || 0;
+    // Se l'orologio del telefono è stato spostato indietro, il blocco non supera comunque BLOCK_MS.
+    const until = Math.min(Number(v.until) || 0, Date.now() + BLOCK_MS);
+    return { fails, until };
+  } catch (e) { return { fails: 0, until: 0 }; }
+}
+function setPinLock(l) {
+  try {
+    if (l.fails || l.until > Date.now()) localStorage.setItem(PIN_LOCK_KEY, JSON.stringify(l));
+    else localStorage.removeItem(PIN_LOCK_KEY);
+  } catch (e) { /* storage non disponibile: il blocco vale solo fino alla ricarica */ }
+}
+const clearPinLock = () => setPinLock({ fails: 0, until: 0 });
+const pinBlocked = () => Date.now() < getPinLock().until;
+
+// Mostra i secondi che mancano e, alla fine, torna al messaggio normale.
+function showBlockCountdown() {
+  clearInterval(blockTimer);
+  const tick = () => {
+    const left = Math.ceil((getPinLock().until - Date.now()) / 1000);
+    if (pinMode !== 'unlock' || left <= 0) {
+      clearInterval(blockTimer);
+      if (pinMode === 'unlock') lockMessage('Inserisci il PIN');
+      return;
+    }
+    lockMessage(`Troppi tentativi. Riprova tra ${left} ${left === 1 ? 'secondo' : 'secondi'}.`, true);
+  };
+  tick();
+  blockTimer = setInterval(tick, 1000);
 }
 
 async function hashPin(pin, salt) {
@@ -974,7 +1119,12 @@ function showLock(mode, message) {
   pinMode = mode;
   pinBuffer = '';
   if (mode === 'set') pinFirst = '';
-  if (noteDialog.open) noteDialog.close();
+  // La scheda aperta starebbe sopra il blocco: si chiude, ma si tiene quanto scritto.
+  if (noteDialog.open) {
+    noteDraft = { key: noteKey, text: noteText.value, type: $('abs-type').value,
+                  hours: $('abs-hours').value };
+    noteDialog.close();
+  }
   const defaults = {
     unlock: 'Inserisci il PIN',
     set: `Scegli un PIN di ${PIN_LEN} cifre`,
@@ -985,13 +1135,21 @@ function showLock(mode, message) {
   $('lock-forgot').hidden = mode !== 'unlock';
   updateDots();
   document.documentElement.classList.add('locked');
+  if (mode === 'unlock' && pinBlocked()) showBlockCountdown();
 }
 
 function hideLock() {
+  const wasUnlock = pinMode === 'unlock';
   pinMode = null;
   pinBuffer = '';
   document.documentElement.classList.remove('locked');
   updatePinButtons();
+  if (noteDraft && wasUnlock) {
+    const d = noteDraft;
+    noteDraft = null;
+    openNote(d.key, d);
+  }
+  reloadIfPending();
 }
 
 function pinError(text) {
@@ -1009,15 +1167,17 @@ async function checkPin() {
   if (pinMode === 'unlock') {
     const stored = getPin();
     if (!stored || await hashPin(entered, stored.salt) === stored.hash) {
-      failCount = 0;
+      clearPinLock();
       hideLock();
       return;
     }
-    if (++failCount >= MAX_ATTEMPTS) {
-      failCount = 0;
-      blockedUntil = Date.now() + BLOCK_MS;
-      pinError(`Troppi tentativi. Riprova tra ${BLOCK_MS / 1000} secondi.`);
+    const lock = getPinLock();
+    if (++lock.fails >= MAX_ATTEMPTS) {
+      setPinLock({ fails: 0, until: Date.now() + BLOCK_MS });
+      pinError('');
+      showBlockCountdown();
     } else {
+      setPinLock(lock);
       pinError('PIN errato');
     }
   } else if (pinMode === 'set') {
@@ -1031,6 +1191,7 @@ async function checkPin() {
     const salt = [...crypto.getRandomValues(new Uint8Array(16))]
       .map(b => b.toString(16).padStart(2, '0')).join('');
     localStorage.setItem(PIN_KEY, JSON.stringify({ salt, hash: await hashPin(entered, salt) }));
+    clearPinLock();
     hideLock();
     alert('PIN impostato. Verrà chiesto a ogni apertura dell\'app.');
   }
@@ -1038,7 +1199,7 @@ async function checkPin() {
 
 function pressDigit(d) {
   if (!pinMode || pinBuffer.length >= PIN_LEN) return;
-  if (Date.now() < blockedUntil) return;
+  if (pinMode === 'unlock' && pinBlocked()) return;
   pinBuffer += d;
   updateDots();
   if (pinBuffer.length === PIN_LEN) setTimeout(checkPin, 120);
@@ -1070,6 +1231,10 @@ $('lock-forgot').addEventListener('click', () => {
   if (!confirm('Sei sicuro? Tutte le ore e le descrizioni verranno eliminate.')) return;
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(PIN_KEY);
+  clearPinLock();
+  for (const k of corruptKeys()) localStorage.removeItem(k);  // "tutti i dati" comprende le copie
+  corruptUnsaved = false;
+  updateCorruptBox();
   data = { version: 1, hours: {}, notes: {}, absences: {}, settings: normalizeSettings() };
   hideLock();
   render();
@@ -1085,6 +1250,7 @@ $('pin-set').addEventListener('click', () => showLock('set'));
 $('pin-remove').addEventListener('click', () => {
   if (!confirm('Rimuovere il PIN? L\'app si aprirà senza protezione.')) return;
   localStorage.removeItem(PIN_KEY);
+  clearPinLock();
   updatePinButtons();
 });
 
@@ -1101,22 +1267,69 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// ---- Aggiornamento dell'app ----
+let reloadPending = false;
+let reloaded = false;
+function reloadIfPending() {
+  if (!reloadPending || reloaded) return;
+  const busy = pageStack.length || noteDialog.open || noteDraft ||
+               (pinMode && pinMode !== 'unlock');
+  if (busy) return;
+  reloaded = true;
+  location.reload();
+}
+noteDialog.addEventListener('close', () => setTimeout(reloadIfPending));
+
+// ---- Dati danneggiati ----
+// Se c'è una copia messa da parte, in "Esporta e backup" compaiono i pulsanti per
+// scaricarla (per tentare un recupero) o eliminarla.
+function updateCorruptBox() {
+  const keys = corruptKeys();
+  $('corrupt-box').hidden = !keys.length;
+  if (keys.length) {
+    const when = new Date(keys[keys.length - 1].slice(CORRUPT_PREFIX.length));
+    $('corrupt-hint').textContent = `Il ${when.toLocaleDateString('it-IT')} i dati salvati non ` +
+      `si leggevano: ne è stata tenuta una copia${keys.length > 1 ? ` (copie: ${keys.length})` : ''}. ` +
+      'Per tornare ai dati ripristina un backup; la copia serve solo per tentare un recupero.';
+  }
+}
+$('corrupt-dl').addEventListener('click', () => {
+  const keys = corruptKeys();
+  if (!keys.length) return;
+  const k = keys[keys.length - 1];
+  const day = k.slice(CORRUPT_PREFIX.length, CORRUPT_PREFIX.length + 10);
+  deliverFile(`rapportini-dati-danneggiati-${day}.json`, localStorage.getItem(k), 'application/json');
+});
+$('corrupt-del').addEventListener('click', () => {
+  if (!confirm('Eliminare la copia dei dati danneggiati? Non si potrà più tentare di recuperarli.')) return;
+  for (const k of corruptKeys()) localStorage.removeItem(k);
+  updateCorruptBox();
+});
+
 // ---- Avvio ----
 $('app-version').textContent = 'Versione ' + APP_VERSION;
 render({ scroll: 'today' });
 updateBackupBanner();
+updateCorruptBox();
+if (corruptFound) {
+  alert(corruptUnsaved
+    ? 'I dati salvati su questo dispositivo non si leggono. Per non perderli, l\'app non salverà ' +
+      'modifiche: ripristina un backup da Menu → Esporta e backup.'
+    : 'I dati salvati su questo dispositivo non si leggono: l\'app riparte vuota, ma ne ha tenuta ' +
+      'una copia. Ripristina un backup da Menu → Esporta e backup.');
+}
 if (getPin()) showLock('unlock');
 
 if ('serviceWorker' in navigator) {
   // Quando è pronta una nuova versione dell'app, ricarica la pagina una volta
   // così si vede subito (senza dover chiudere e riaprire due volte).
   // Solo se c'era già una versione attiva: al primo avvio non serve.
+  // Se però si sta usando l'app (scheda del giorno, una pagina o il cambio PIN aperti),
+  // aspetta che si chiuda tutto per non perdere quanto non ancora salvato.
   if (navigator.serviceWorker.controller) {
-    let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloaded) return;
-      reloaded = true;
-      location.reload();
+      reloadPending = true;
+      reloadIfPending();
     });
   }
   navigator.serviceWorker.register('sw.js').catch(() => {});

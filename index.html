@@ -2,6 +2,10 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
+  <!-- Il browser blocca qualsiasi contatto con altri siti: script, stili, immagini e
+       connessioni solo dall'app stessa, nessuna richiesta di rete dal codice. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Rapportini</title>
   <meta name="theme-color" content="#1f5fbf">
@@ -13,10 +17,7 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
-  <script>
-    // Se c'è un PIN, nasconde subito i dati prima che la pagina venga disegnata.
-    try { if (localStorage.getItem('rapportini.pin')) document.documentElement.classList.add('locked'); } catch (e) {}
-  </script>
+  <script src="lock-init.js"></script>
 </head>
 <body>
   <div class="lock" id="lock" role="dialog" aria-modal="true" aria-labelledby="lock-msg">
@@ -137,6 +138,12 @@
       <button type="button" class="sheet-btn" id="backup">Salva backup completo (JSON)</button>
       <button type="button" class="sheet-btn" id="restore">Ripristina da backup&hellip;</button>
       <p class="hint" id="last-backup"></p>
+      <div id="corrupt-box" hidden>
+        <h2 class="page-sub">Dati danneggiati</h2>
+        <p class="hint" id="corrupt-hint"></p>
+        <button type="button" class="sheet-btn" id="corrupt-dl">Scarica la copia dei dati danneggiati</button>
+        <button type="button" class="sheet-btn danger-soft" id="corrupt-del">Elimina la copia</button>
+      </div>
     </div>
   </div>
 
