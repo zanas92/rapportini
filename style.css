@@ -702,3 +702,16 @@ body > .topbar {
 @media (prefers-color-scheme: dark) {
   .sheet-btn.danger-soft { background: #3d1a1a; color: #f08a80; }
 }
+
+/* Icona nota sempre al centro del cerchio, anche su Safari vecchi (iOS 15):
+   niente padding predefinito dei pulsanti e centraggio con flex. */
+.desc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  line-height: 0;
+}
+.desc-btn svg { display: block; width: 20px; height: 20px; flex: none; margin: 0; }

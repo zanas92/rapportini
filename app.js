@@ -2,7 +2,7 @@
 
 // Versione dell'app, mostrata in fondo al menu ☰.
 // Va tenuta uguale al numero di CACHE in sw.js: si aumentano insieme a ogni modifica.
-const APP_VERSION = 25;
+const APP_VERSION = 27;
 
 // ---- Impostazioni ----
 const STORAGE_KEY = 'rapportini.v1';
@@ -426,31 +426,56 @@ function fillSettings() {
   updateClearMonth();
 }
 
-// ---- Svuota mese (dal mese visualizzato) ----
-function monthKeysWithData(y, m) {
-  const prefix = `${y}-${pad(m + 1)}-`;
-  const keys = new Set();
+// ---- Svuota mese (scelto dall'elenco dei mesi che hanno dati) ----
+const clearSel = $('clear-month-sel');
+const giorniTxt = n => n === 1 ? '1 giorno' : n + ' giorni';
+
+// { "2026-11": ["2026-11-02", ...], ... } con tutti i giorni che hanno ore, note o assenze.
+function monthsWithData() {
+  const out = {};
   for (const store of [data.hours, data.notes, data.absences]) {
-    for (const k of Object.keys(store)) if (k.startsWith(prefix)) keys.add(k);
+    for (const k of Object.keys(store)) {
+      const ym = k.slice(0, 7);
+      (out[ym] = out[ym] || new Set()).add(k);
+    }
   }
-  return [...keys];
+  for (const ym of Object.keys(out)) out[ym] = [...out[ym]];
+  return out;
 }
-function updateClearMonth() {
-  const name = monthYear.format(new Date(viewYear, viewMonth, 1));
-  const n = monthKeysWithData(viewYear, viewMonth).length;
+const ymName = ym => monthYear.format(new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1));
+
+// Ricostruisce l'elenco; preseleziona il mese visualizzato (se ha dati) o quello già scelto.
+function updateClearMonth(preferViewed = true) {
+  const months = monthsWithData();
+  const yms = Object.keys(months).sort().reverse();
+  const viewed = `${viewYear}-${pad(viewMonth + 1)}`;
+  const keep = preferViewed && months[viewed] ? viewed : clearSel.value;
+  clearSel.replaceChildren(...yms.map(ym =>
+    new Option(`${ymName(ym)} · ${giorniTxt(months[ym].length)}`, ym)));
+  clearSel.disabled = !yms.length;
+  if (!yms.length) clearSel.add(new Option('Nessun mese con dati', ''));
+  else clearSel.value = months[keep] ? keep : yms[0];
+  updateClearButton();
+}
+function updateClearButton() {
+  const ym = clearSel.value;
   const btn = $('clear-month');
-  btn.textContent = `Svuota ${name}`;
-  btn.disabled = !n;
-  $('clear-month-hint').textContent = n
-    ? `Cancella ore, descrizioni, ferie, permessi e malattia di ${n === 1 ? '1 giorno' : n + ' giorni'}.`
-    : 'Questo mese non contiene dati.';
+  btn.disabled = !ym;
+  btn.textContent = ym ? `Svuota ${ymName(ym)}` : 'Svuota mese';
+  const n = ym ? (monthsWithData()[ym] || []).length : 0;
+  $('clear-month-hint').textContent = ym
+    ? `Cancella ore, descrizioni, ferie, permessi e malattia di ${giorniTxt(n)}.`
+    : 'Non ci sono dati da cancellare.';
 }
+clearSel.addEventListener('change', updateClearButton);
+
 $('clear-month').addEventListener('click', () => {
-  const keys = monthKeysWithData(viewYear, viewMonth);
+  const ym = clearSel.value;
+  const keys = ym ? monthsWithData()[ym] || [] : [];
   if (!keys.length) return;
-  const name = monthYear.format(new Date(viewYear, viewMonth, 1));
+  const name = ymName(ym);
   if (!confirm(`Svuotare ${name}? Verranno cancellate ore, descrizioni e assenze di ` +
-               `${keys.length === 1 ? '1 giorno' : keys.length + ' giorni'}.\n\n` +
+               `${giorniTxt(keys.length)}.\n\n` +
                `L'operazione non si può annullare: se vuoi, salva prima un backup.`)) return;
   for (const k of keys) {
     delete data.hours[k];
@@ -459,9 +484,9 @@ $('clear-month').addEventListener('click', () => {
   }
   saveData();
   render();
-  updateClearMonth();
+  updateClearMonth(false);
   updateBackupBanner();
-  toast(`${name[0].toUpperCase() + name.slice(1)} svuotato`);
+  toast(`${capitalize(name)} svuotato`);
 });
 
 function saveSettings() {
